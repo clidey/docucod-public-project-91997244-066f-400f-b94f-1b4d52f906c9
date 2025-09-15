@@ -1,0 +1,277 @@
+---
+title: "Advanced Configuration & Customizing Connections"
+description: "How to customize ClickHouse driver connections for TLS, compression, and detailed settings. Explains integration with lower-level ClickHouse settings for production-grade deployments."
+---
+
+# Advanced Configuration & Customizing Connections
+
+This guide walks you through customizing the ClickHouse driver connections for TLS, compression, and other advanced settings to help you build production-grade, secure, and performant applications. You will learn how to integrate low-level ClickHouse driver options with GORM’s ClickHouse integration, enabling fine-grained control over connection behavior and database interactions.
+
+---
+
+## 1. Overview
+
+### Purpose
+This documentation helps developers establish and fine-tune connections to ClickHouse databases via the GORM ClickHouse driver, focusing on advanced configuration features such as TLS encryption, compression algorithms, timeouts, and granular connection settings.
+
+### Prerequisites
+- Basic working knowledge of Go and GORM
+- A running ClickHouse server
+- Familiarity with DSN strings and GORM’s `gorm.Open` API
+- Go modules configured to import `gorm.io/driver/clickhouse` and `gorm.io/gorm`
+
+### Expected Outcome
+By following this guide, you will be able to:
+- Secure your ClickHouse connection using TLS
+- Control compression algorithms for query and data transfer
+- Use detailed timeout and driver settings for stable production usage
+- Integrate lower-level ClickHouse driver options directly into your GORM setup
+
+### Estimated Time
+10-20 minutes to integrate and test advanced connection settings.
+
+### Difficulty Level
+Intermediate
+
+---
+
+## 2. Configuring Advanced Connection Options
+
+GORM’s ClickHouse driver supports advanced configuration by passing a pre-configured underlying ClickHouse database connection instance or a detailed DSN string with query parameters.
+
+### 2.1 Basic Connection with DSN
+You can specify connection parameters directly in the DSN string:
+
+```go
+dsn := "clickhouse://username:password@host:port/database?dial_timeout=10s&read_timeout=20s"
+db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+```
+
+This method supports standard options such as timeouts.
+
+### 2.2 Passing a Custom `sql.DB` Connection with Advanced Options
+For production setups demanding TLS, compression, and custom behaviors, initialize the low-level ClickHouse driver from `github.com/ClickHouse/clickhouse-go/v2` with your preferred options, then create the GORM DB instance from it.
+
+```go
+import (
+  std_ck "github.com/ClickHouse/clickhouse-go/v2"
+  "crypto/tls"
+  "time"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+func main() {
+  sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+    Addr: []string{"127.0.0.1:9000"},
+    Auth: std_ck.Auth{
+      Database: "default",
+      Username: "default",
+      Password: "",
+    },
+    TLS: &tls.Config{
+      InsecureSkipVerify: true, // Set to false and configure properly for production!
+    },
+    DialTimeout: 5 * time.Second,
+    Compression: &std_ck.Compression{
+      std_ck.CompressionLZ4, // Supported compression algorithms
+    },
+    Settings: std_ck.Settings{
+      "max_execution_time": 60, // Server-side clickhouse setting
+    },
+    Debug: true, // Enables debug logging for the driver
+  })
+  if err != nil {
+    panic(err)
+  }
+
+  db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+    Conn: sqlDB, // Reuse the created underlying sql.DB
+  }), &gorm.Config{})
+
+  if err != nil {
+    panic(err)
+  }
+
+  // Use the db instance...
+}
+```
+
+#### Explanation:
+- `Addr`: List of ClickHouse TCP addresses.
+- `Auth`: Credentials for the connection.
+- `TLS`: TLS configuration for encryption.
+- `DialTimeout`: Dial timeout.
+- `Compression`: Compression algorithm to reduce bandwidth.
+- `Settings`: Pass ClickHouse-specific variables.
+- `Debug`: Enables verbose driver logs for troubleshooting.
+
+### 2.3 Using Configuration Struct with Additional Options
+The GORM ClickHouse driver exposes a `Config` struct allowing you to override defaults such as date/time precision handling, compression, table engine defaults, and index types.
+
+```go
+import (
+  "time"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+ds := "clickhouse://user:pass@host:9000/db?dial_timeout=200ms&max_execution_time=60"
+
+func main() {
+  cfg := clickhouse.Config{
+    DSN:                       ds,
+    DisableDatetimePrecision:  true,           // Disable DateTime64 precision for compatibility
+    DontSupportRenameColumn:   true,           // Disable renaming column for ClickHouse < 20.4
+    DefaultGranularity:        3,              // Row granule for indexes
+    DefaultCompression:        "LZ4",         // The compression algorithm
+    DefaultIndexType:          "minmax",     // Index storage type
+    DefaultTableEngineOpts:    "ENGINE=MergeTree() ORDER BY tuple()", // Table engine
+  }
+
+  db, err := gorm.Open(clickhouse.New(cfg), &gorm.Config{})
+  if err != nil {
+    panic(err)
+  }
+
+  // Use db...
+}
+```
+
+---
+
+## 3. Practical Tips and Best Practices
+
+- **TLS Configuration:** Always use proper TLS cert validation in production. Only use `InsecureSkipVerify: true` for testing.
+- **Compression:** The default `LZ4` compression is a balanced choice offering speed and compression efficiency. Use it unless you have specific needs.
+- **Timeouts:** Tune `dial_timeout`, `read_timeout`, and other timeouts via DSN query parameters for your network and workload.
+- **Debug Mode:** Enable the driver debug mode during development to track down communication or SQL issues.
+- **Multiple Hosts:** You can specify multiple hosts in the DSN or `Addr` slice for failover or load balancing.
+- **Reuse Connections:** Pass a preconfigured `sql.DB` to GORM to share connection pools and customize connection limits.
+
+---
+
+## 4. Step-by-Step Guide: Setting Up a Secure and Compressed Connection
+
+<Steps>
+<Step title="Step 1: Import Required Packages">
+Make sure you have imported the GORM ClickHouse driver, the standard ClickHouse Go driver, and crypto/tls for TLS configuration.
+</Step>
+<Step title="Step 2: Configure ClickHouse Driver Options">
+Create an `Options` struct from `github.com/ClickHouse/clickhouse-go/v2` with your server addresses, credentials, TLS configuration, and compression settings.
+</Step>
+<Step title="Step 3: Open Underlying SQL Connection">
+Use `OpenDB` from the std clickhouse driver to establish a raw `*sql.DB` connection.
+</Step>
+<Step title="Step 4: Initialize GORM with the Custom Connection">
+Create a new GORM connection by passing the configured `sql.DB` in the `clickhouse.Config` as the `Conn` option.
+</Step>
+<Step title="Step 5: Verify Connection">
+Test database operations such as migrations or inserts to confirm your connection is correctly set up and secure.
+</Step>
+</Steps>
+
+
+Example:
+```go
+package main
+
+import (
+  "crypto/tls"
+  "log"
+  "time"
+
+  std_ck "github.com/ClickHouse/clickhouse-go/v2"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+type User struct {
+  ID   uint64
+  Name string
+  Age  int
+}
+
+func main() {
+  opts := &std_ck.Options{
+    Addr: []string{"127.0.0.1:9000"},
+    Auth: std_ck.Auth{
+      Database: "default",
+      Username: "default",
+      Password: "",
+    },
+    TLS: &tls.Config{InsecureSkipVerify: true},
+    DialTimeout: 5 * time.Second,
+    Compression: &std_ck.Compression{std_ck.CompressionLZ4},
+    Debug: true,
+  }
+
+  sqlDB, err := std_ck.OpenDB(opts)
+  if err != nil {
+    log.Fatalf("failed to open sql db: %v", err)
+  }
+
+  db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+    Conn: sqlDB,
+  }), &gorm.Config{})
+  if err != nil {
+    log.Fatalf("failed to connect with gorm: %v", err)
+  }
+
+  err = db.AutoMigrate(&User{})
+  if err != nil {
+    log.Fatalf("failed to migrate: %v", err)
+  }
+
+  db.Create(&User{Name: "Alice", Age: 25})
+}
+```
+
+---
+
+## 5. Troubleshooting
+
+<AccordionGroup title="Common Connection Issues">
+<Accordion title="Connection Timeout or Failure">
+Verify your network connectivity to ClickHouse server and check if the ports are exposed and accessible. Check your `dial_timeout` and other timeouts in your DSN or options. Also confirm that the server is running at the specified address.
+</Accordion>
+<Accordion title="TLS Handshake Errors">
+Ensure your TLS certificates and configuration are correct. If testing locally, use `InsecureSkipVerify: true` to bypass verification, but never use this in production.
+</Accordion>
+<Accordion title="Authentication Failures">
+Confirm your username and password, as well as the database name, are correct and that the user has appropriate permissions.
+</Accordion>
+<Accordion title="Compression Compatibility Issues">
+Confirm that the ClickHouse server and client support the compression algorithm you've selected. Default `LZ4` is widely supported.
+</Accordion>
+</AccordionGroup>
+
+<Tip>
+For detailed debugging, enable the `Debug` field in the ClickHouse driver options to see driver logs and trace issues.
+</Tip>
+
+---
+
+## 6. Additional Settings Available
+
+You may configure the following advanced options in the `clickhouse.Config` struct:
+
+- `DisableDatetimePrecision`: Disable `DateTime64` precision for ClickHouse versions below 20.4
+- `DontSupportRenameColumn`: Disable rename column support where ClickHouse version does not support it
+- `DefaultGranularity`: Sets the granularity parameter for indexes and tables
+- `DefaultCompression`: Override the compression codec default (`"LZ4"` recommended)
+- `DefaultIndexType`: Index type default (`"minmax"` typical)
+- `DefaultTableEngineOpts`: Set default engine and order-by options on table creation
+
+These allow tuning GORM’s interactions with ClickHouse to match your server version and deployment environment.
+
+---
+
+## 7. Next Steps & Related Content
+
+- After mastering connection customization, proceed to the [Database Migrations and Table Options](../getting-started/running-migrations) guide to handle schema evolution.
+- For data manipulation, visit [Performing Basic CRUD Operations](../getting-started/basic-crud).
+- Refer to the [Troubleshooting & Validation](../../getting-started/your-first-run/troubleshooting-common-issues) guide for common setup issues.
+- Explore the [Core Terminology](../../overview/architecture-and-concepts/core-terminology) page to deepen your understanding of key concepts related to ClickHouse and GORM.
+
+---
