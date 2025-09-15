@@ -1,0 +1,331 @@
+---
+title: "Performing Basic CRUD Operations"
+description: "A practical walkthrough of Create, Read, Update, and Delete operations using GORM with ClickHouse, including real code examples of insert, query, update, and delete operations."
+---
+
+# Performing Basic CRUD Operations with GORM ClickHouse
+
+This guide provides a practical, hands-on walkthrough of how to perform basic Create, Read, Update, and Delete (CRUD) operations using the GORM ORM with the ClickHouse database. Through real code examples and stepwise instructions, you will learn how to insert new records, query existing data, update entries, and delete records effectively within your Go application.
+
+---
+
+## 1. Workflow Overview
+
+### Task Description
+This guide helps you accomplish essential data manipulation tasks—creating, reading, updating, and deleting records—in a ClickHouse database using GORM’s expressive and idiomatic Go API.
+
+### Prerequisites
+- A running ClickHouse server (e.g., via the provided Docker Compose setup).
+- Go environment with GORM and the GORM ClickHouse driver installed and configured.
+- Basic familiarity with Go language and struct definitions.
+- Established database connection (e.g., as shown in your project’s init or main function). 
+
+### Expected Outcome
+By following this guide, you will:
+- Insert individual and batch records into ClickHouse.
+- Query single entries and collections from the database.
+- Update existing records using both model instances and map-based updates.
+- Delete records cleanly and verify their removal.
+
+### Time Estimate
+Approximately 15–30 minutes.
+
+### Difficulty Level
+Beginner to Intermediate.
+
+---
+
+## 2. Step-by-Step Instructions
+
+### Step 1: Prepare Your Data Model
+Define a Go struct that maps to your ClickHouse table schema. For example, a `User` struct:
+
+```go
+import "time"
+
+type User struct {
+    ID        uint64            `gorm:"primaryKey"`
+    Name      string
+    FirstName string
+    LastName  string
+    Age       int64             `gorm:"type:Nullable(Int64)"`
+    Active    bool
+    Salary    float32
+    Attrs     map[string]string `gorm:"type:Map(String,String);"`
+    CreatedAt time.Time
+    UpdatedAt time.Time
+}
+```
+
+<Tip>
+Ensure your struct tags align with ClickHouse types and your migration expectations. Use nullable types and map annotations as needed.
+</Tip>
+
+---
+
+### Step 2: Create Records
+
+#### Insert a Single Record
+Use `db.Create(&user)` to insert a new user.
+
+```go
+user := User{
+    ID: 1, Name: "create", FirstName: "zhang", LastName: "jinzhu",
+    Age: 18, Active: true, Salary: 8.8888,
+    Attrs: map[string]string{"a": "a", "b": "b"},
+}
+if err := db.Create(&user).Error; err != nil {
+    log.Fatalf("failed to create user, got error %v", err)
+}
+```
+
+#### Batch Insert Multiple Records
+Insert many records at once by passing a slice.
+
+```go
+users := []User{
+    {ID: 11, Name: "batch_create_1", FirstName: "zhang", LastName: "jinzhu", Age: 18, Active: true, Salary: 6},
+    {ID: 12, Name: "batch_create_2", FirstName: "zhang", LastName: "jinzhu", Age: 18, Active: false, Salary: 6.12},
+    {ID: 13, Name: "batch_create_3", FirstName: "zhang", LastName: "jinzhu", Age: 18, Active: true, Salary: 6.1234},
+    {ID: 14, Name: "batch_create_4", FirstName: "zhang", LastName: "jinzhu", Age: 18, Active: false, Salary: 6.123456},
+}
+
+if err := db.Create(&users).Error; err != nil {
+    log.Fatalf("failed to batch create users, got error %v", err)
+}
+```
+
+#### Create Using a Map
+Alternatively, insert using a map for dynamic fields.
+
+```go
+userMap := map[string]interface{}{
+    "id": 122, "name": "create2", "first_name": "zhang",
+    "last_name": "jinzhu", "age": 18, "active": true, "salary": 6.6666,
+}
+
+if err := db.Table("users").Create(&userMap).Error; err != nil {
+    log.Fatalf("failed to create user with map, got error %v", err)
+}
+```
+
+<Check>
+Newly created records will be persisted in the `users` table with proper timestamps.
+</Check>
+
+---
+
+### Step 3: Read/Query Records
+
+#### Query by Primary Key
+Retrieve a user by ID using `Find`.
+
+```go
+var result User
+if err := db.Find(&result, 1).Error; err != nil {
+    log.Fatalf("failed to query user, got error %v", err)
+}
+```
+
+#### Raw SQL Query for Partial Fields
+Fetch selected columns directly.
+
+```go
+type PartialUser struct {
+    Name string
+}
+var partialResult PartialUser
+if err := db.Raw("select * from users where id = ?", 1).Scan(&partialResult).Error; err != nil {
+    log.Fatalf("failed to query partial user, got error %v", err)
+}
+```
+
+#### Query Single Column to Slice
+Get a list of all user names.
+
+```go
+var names []string
+if err := db.Select("name").Model(&User{}).Find(&names).Error; err != nil {
+    log.Fatalf("failed to query user names, got error %v", err)
+}
+```
+
+---
+
+### Step 4: Update Records
+
+#### Update Single Field Using Model
+Update fields by loading the model first.
+
+```go
+var user User
+if err := db.Find(&user, 3).Error; err != nil {
+    log.Fatalf("failed to query user, got error %v", err)
+}
+
+if err := db.Model(&user).Update("name", "updated-name").Error; err != nil {
+    log.Fatalf("failed to update user name, got error %v", err)
+}
+```
+
+#### Update Using Map
+Update multiple fields with a map.
+
+```go
+if err := db.Table("users").Where("id = ?", 33).Updates(map[string]interface{}{"name": "update-3", "active": true}).Error; err != nil {
+    log.Fatalf("failed to update user fields, got error %v", err)
+}
+```
+
+<Tip>
+Use `time.Sleep` of ~200ms if eventual consistency delays affect your query results immediately after updates.
+</Tip>
+
+---
+
+### Step 5: Delete Records
+
+Delete records confidently and verify removal.
+
+```go
+var user User
+if err := db.Find(&user, 2).Error; err != nil {
+    log.Fatalf("failed to query user for deletion, got error %v", err)
+}
+
+if err := db.Delete(&user).Error; err != nil {
+    log.Fatalf("failed to delete user, got error %v", err)
+}
+
+// Optional delay to ensure deletion is persisted
+ time.Sleep(500 * time.Millisecond)
+
+// Verify record no longer exists
+var check User
+if err := db.First(&check, 2).Error; err == nil {
+    log.Fatalf("expected ErrRecordNotFound, but user still exists")
+}
+```
+
+---
+
+## 3. Examples & Code Samples
+
+Here is an integrated example combining the steps above:
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "gorm.io/driver/clickhouse"
+    "gorm.io/gorm"
+)
+
+type User struct {
+    ID        uint64            `gorm:"primaryKey"`
+    Name      string
+    FirstName string
+    LastName  string
+    Age       int64             `gorm:"type:Nullable(Int64)"`
+    Active    bool
+    Salary    float32
+    Attrs     map[string]string `gorm:"type:Map(String,String);"`
+    CreatedAt time.Time
+    UpdatedAt time.Time
+}
+
+func main() {
+    dsn := "clickhouse://gorm:gorm@127.0.0.1:9942/gorm?dial_timeout=10s&read_timeout=20s"
+    db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+    if err != nil {
+        log.Fatalf("failed to connect database: %v", err)
+    }
+
+    // Auto migrate to ensure table exists
+    if err := db.AutoMigrate(&User{}); err != nil {
+        log.Fatalf("auto migrate failed: %v", err)
+    }
+
+    // Create a user
+    user := User{ID: 100, Name: "Alice", FirstName: "Alice", LastName: "Smith", Age: 30, Active: true, Salary: 50000.0}
+    if err := db.Create(&user).Error; err != nil {
+        log.Fatalf("create failed: %v", err)
+    }
+
+    // Read user back
+    var fetched User
+    if err := db.Find(&fetched, user.ID).Error; err != nil {
+        log.Fatalf("query failed: %v", err)
+    }
+    log.Printf("Fetched User: %+v", fetched)
+
+    // Update user's Name
+    if err := db.Model(&fetched).Update("name", "AliceUpdated").Error; err != nil {
+        log.Fatalf("update failed: %v", err)
+    }
+
+    // Wait for consistency
+    time.Sleep(200 * time.Millisecond)
+
+    // Verify updated record
+    var updated User
+    if err := db.First(&updated, user.ID).Error; err != nil {
+        log.Fatalf("query updated failed: %v", err)
+    }
+    log.Printf("Updated User: %+v", updated)
+
+    // Delete user
+    if err := db.Delete(&updated).Error; err != nil {
+        log.Fatalf("delete failed: %v", err)
+    }
+
+    // Wait and verify deletion
+    time.Sleep(500 * time.Millisecond)
+    var deleted User
+    if err := db.First(&deleted, user.ID).Error; err == nil {
+        log.Fatalf("delete verification failed, user still found")
+    } else {
+        log.Println("User deleted successfully")
+    }
+}
+```
+
+---
+
+## 4. Troubleshooting & Tips
+
+### Common Issues
+- **Record Not Found After Insert**: Due to event delays, querying immediately after insert or update may sometimes miss the record. Use up to a 200-500ms wait before verification.
+- **Field Type Mismatch**: Make sure Go types correspond correctly to ClickHouse column types (e.g., `Int64` for nullable integers).
+- **Map Field Mapping**: When using maps for inserts or updates, confirm keys exactly match table columns.
+
+### Best Practices
+- Use `AutoMigrate` to sync your Go structs and database schema before running CRUD operations.
+- Prefer batch inserts for improved write performance when inserting multiple records simultaneously.
+- Use model instances for expressive updates, and maps for flexible or partial field updates.
+
+### Performance Considerations
+- Batch operations reduce network overhead and speed up large data writes.
+- Avoid overly frequent queries immediately after updates without delay; consider eventual consistency after Write.
+
+### Alternative Approaches
+- You can execute raw SQL queries via `db.Raw` or `db.Exec` to perform specialized operations not covered by GORM.
+- Use `db.Table()` with the map and struct methods when dealing with non-standard table names or dynamic schemas.
+
+---
+
+## 5. Next Steps & Related Content
+
+- After mastering CRUD, explore [Database Migrations and Table Options](/guides/getting-started/running-migrations) to learn schema changes and index management.
+- Dive into [Advanced Configuration & Customizing Connections](/guides/advanced-usage/advanced-configuration-options) for tuning driver behavior and performance.
+- To handle large-scale inserts more efficiently, check out [Batch Inserts and Performance Patterns](/guides/advanced-usage/batch-inserts-performance).
+- Reinforce your connection skills with [Connecting to ClickHouse](/guides/getting-started/connecting-database).
+
+---
+
+This practical guide equips you with the fundamental knowledge to manipulate data within ClickHouse using GORM in a Go application, ensuring you can confidently develop downstream data workflows leveraging GORM’s elegant API.
+
+---

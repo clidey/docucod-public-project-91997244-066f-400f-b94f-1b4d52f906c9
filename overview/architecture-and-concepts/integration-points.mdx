@@ -1,0 +1,253 @@
+---
+title: "Integrating with Go Ecosystem"
+description: "Show how this driver fits into common Go and data engineering workflows: local development with Docker, CI/CD practices, and using ClickHouse's Go driver. Highlight configuration conventions, extensibility, and pointers to external references for deeper integration."
+---
+
+# Integrating with Go Ecosystem
+
+## Connecting ClickHouse in Your Go Applications
+
+Whether you're developing locally, running tests, or automating your deployment pipeline, seamless integration with ClickHouse through Go is critical. The GORM ClickHouse driver is designed to fit naturally into common Go workflows, enhancing both developer productivity and system reliability.
+
+This page guides you through how to use the driver effectively within the Go ecosystem — from setting up local environments with Docker to best practices for CI/CD pipelines and advanced usage of ClickHouse's Go driver.
+
+---
+
+## Local Development with Docker
+
+To enable rapid development without installing ClickHouse directly on your machine, you can use Docker for a ready-made ClickHouse server instance. The provided `docker-compose.yml` file defines a service that launches ClickHouse with pre-configured credentials and ports.
+
+```yaml
+version: "3"
+services:
+  server:
+    image: yandex/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=gorm
+      - CLICKHOUSE_USER=gorm
+      - CLICKHOUSE_PASSWORD=gorm
+    ports:
+    - 9941:8123       # HTTP interface
+    - 9942:9000       # native TCP interface (for Go driver)
+    - 9943:9009       # inter-server communication
+```
+
+### Benefit
+- Launch a full ClickHouse server quickly and consistently.
+- Use well-known default credentials (`gorm/gorm`) to simplify testing.
+- Directly expose native TCP port (9000 mapped to 9942) to connect with the Go driver.
+
+<Tip>
+Run `docker-compose up` in your development environment with this configuration to start a ClickHouse instance that matches the connection details expected by GORM ClickHouse.
+</Tip>
+
+---
+
+## Establishing Connections with the GORM ClickHouse Driver
+
+The driver uses a DSN (Data Source Name) string familiar to Go developers, encapsulating all connection details, timeouts, and options. Here's a concise example to get you connected:
+
+```go
+package main
+
+import (
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+)
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func main() {
+	dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+	db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	// Create tables automatically
+	db.AutoMigrate(&User{})
+
+	// Insert a record
+	db.Create(&User{Name: "Angeliz", Age: 18})
+
+	// Query data
+	db.Find(&User{}, "name = ?", "Angeliz")
+}
+```
+
+### Highlights:
+- Connect using standard Go DSN, supporting username, password, hosts, ports, database, and timeout parameters.
+- AutoMigrate helps keep your schema in sync without manual queries.
+- Basic CRUD operations integrate seamlessly with GORM’s idiomatic APIs.
+
+<Tip>
+Remember to map your Docker port (`9942`) correctly when using containerized ClickHouse for local connection.
+</Tip>
+
+---
+
+## Advanced Configuration with ClickHouse-Go
+
+For deeper control over connection parameters and performance tuning, you can leverage the official ClickHouse Go driver's configuration alongside GORM. This allows setting granular options like TLS, compression, execution time limits, and debug logging.
+
+```go
+package main
+
+import (
+  std_ck "github.com/ClickHouse/clickhouse-go/v2"
+  "crypto/tls"
+  "time"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+func main() {
+  sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+    Addr: []string{"127.0.0.1:9999"},
+    Auth: std_ck.Auth{
+      Database: "default",
+      Username: "default",
+      Password: "",
+    },
+    TLS: &tls.Config{
+      InsecureSkipVerify: true,
+    },
+    Settings: std_ck.Settings{
+      "max_execution_time": 60,
+    },
+    DialTimeout: 5 * time.Second,
+    Compression: &std_ck.Compression{
+      std_ck.CompressionLZ4,
+    },
+    Debug: true,
+  })
+  if err != nil {
+    panic(err)
+  }
+
+  db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+    Conn: sqlDB,
+  }), &gorm.Config{})
+  if err != nil {
+    panic(err)
+  }
+
+  // Use db as usual
+}
+```
+
+### Benefits:
+- Programmatic construction of connection with strong type safety.
+- Enable/disable TLS and certificate verification.
+- Configure compression algorithms to improve network efficiency.
+- Set query-level settings, such as max execution time, for stability.
+- Debug mode to help troubleshoot query and connection issues.
+
+---
+
+## Configuration Conventions and Extensibility
+
+The driver supports comprehensive configuration through both DSN strings and Go objects, allowing flexibility in diverse environments:
+
+- **DSN Parameters:** You can customize timeouts (`dial_timeout`, `read_timeout`), compression, and other low-level details through URL query parameters.
+- **Driver Config Struct:** Expose flags controlling behavior such as disabling datetime precision or skipping version-based initialization (`DisableDatetimePrecision`, `SkipInitializeWithVersion`).
+- **Table and Cluster Options:** When performing migrations, you can specify table engines and distributed cluster options dynamically using:
+  - `gorm:table_options` (e.g., `ENGINE=Distributed(cluster, default, hits)`)
+  - `gorm:table_cluster_options` (e.g., `on cluster default`)
+
+These settings allow you to optimize storage engines and take advantage of ClickHouse’s distributed architecture right from Go code.
+
+<Tip>
+Use the `db.Set()` method before migrations or queries to apply these options without changing your model definitions.
+</Tip>
+
+---
+
+## CI/CD Best Practices
+
+Integrate automated testing and migration steps easily into your CI/CD pipelines:
+
+- **Testing Against Docker:** Spin up a disposable ClickHouse instance using Docker Compose in your test environment, matching your local dev setup.
+- **Automated Migrations:** Run your schema migrations through GORM’s `AutoMigrate()` as part of build or deployment stages to keep your production schema current.
+- **Connection Verification:** Use simple connectivity tests in your pipeline to detect configuration or network issues early.
+
+Example setup test snippet:
+
+```go
+package clickhouse_test
+
+import (
+	"log"
+	"os"
+	"testing"
+
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+)
+
+const dbDSN = "clickhouse://gorm:gorm@127.0.0.1:9942/gorm?dial_timeout=10s&read_timeout=20s"
+
+var DB *gorm.DB
+
+func TestMain(m *testing.M) {
+	var err error
+	DB, err = gorm.Open(clickhouse.Open(dbDSN), &gorm.Config{})
+	if err != nil {
+		log.Fatal("failed to connect database", err)
+	}
+
+	// Run migrations...
+	os.Exit(m.Run())
+}
+```
+
+This setup encourages fast feedback loops with reliable environment management.
+
+---
+
+## External References for Deeper Integration
+
+- Visit [https://gorm.io](https://gorm.io) for detailed GORM usage patterns and documentation.
+- Check the official ClickHouse Go driver repo at [github.com/ClickHouse/clickhouse-go](https://github.com/ClickHouse/clickhouse-go) for the latest connection option details and low-level driver features.
+
+These resources provide essential background and advanced concepts to complement your use of the GORM ClickHouse driver.
+
+---
+
+## Summary Diagram of Integration Flow
+
+```mermaid
+flowchart TD
+  App["Go Application"] -->|GORM ORM| GORMClickHouse["GORM ClickHouse Driver"]
+  GORMClickHouse -->|Uses| CHGoDriver["ClickHouse Go Driver"]
+  CHGoDriver -->|Connects To| ClickHouseDB["ClickHouse Database"]
+  ClickHouseDB --> Docker["Dockerized ClickHouse (optional)"]
+
+  subgraph "Local Development"
+    Docker
+  end
+
+  subgraph "CI/CD Pipeline"
+    TestRunner["Run Tests & Migrations"]
+    TestRunner --> GORMClickHouse
+  end
+
+  ClickHouseDB -.->|Query & Manage Schema| GORMClickHouse
+```
+
+This flow highlights how the GORM driver fits inside your software architecture, bridging your Go app with a robust ClickHouse backend.
+
+---
+
+## Next Steps
+
+To get started, follow the [Getting Started Guide](../../getting-started/setup-and-installation/configuration-connection-setup) to configure your environment and run your first queries. Explore advanced configuration tips in [Advanced Configuration & Customizing Connections](../../guides/advanced-usage/advanced-configuration-options) to optimize your setup. For schema evolutions, see [Database Migrations and Table Options](../../guides/getting-started/running-migrations).
+
+<Check>
+- Start with local development using Docker Compose for ClickHouse
+- Use DSN or programmatic config to connect your Go application
+- Implement migrations early in your development and CI/CD processes
+</Check>

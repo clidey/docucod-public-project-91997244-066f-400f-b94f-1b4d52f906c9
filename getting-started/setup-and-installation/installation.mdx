@@ -1,0 +1,269 @@
+---
+title: "Installation"
+description: "Step-by-step instructions for adding the GORM ClickHouse Driver to your Go project. Covers using Go modules, importing packages, and setting up dependencies for both development and production environments, ensuring you have everything ready from the start."
+---
+
+# Installation Guide for GORM ClickHouse Driver
+
+This guide provides clear, step-by-step instructions for adding the GORM ClickHouse Driver to your Go project. You will learn how to use Go modules, import necessary packages, and set up dependencies for both development and production environments. Follow these instructions to smoothly integrate ClickHouse into your Go applications with GORM.
+
+---
+
+## 1. Prerequisites
+
+Before installing the GORM ClickHouse driver, ensure your development environment meets these requirements:
+
+- **Go version**: 1.16 or higher
+- **GORM version**: Compatible with the GORM major version you use
+- **ClickHouse Server**: Running and accessible (version compatible with the driver, e.g., 20.4 and above recommended)
+- **Network access**: Ports such as 9000 or custom ports for ClickHouse need to be reachable from your development machine
+- **Go modules enabled**: Ensure `GO111MODULE` is set to `on` or default behavior
+
+If you need a ClickHouse server quickly, consider using the official Docker image. Here's a sample snippet to start ClickHouse locally:
+
+```yaml
+version: "3"
+services:
+  server:
+    image: yandex/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=gorm
+      - CLICKHOUSE_USER=gorm
+      - CLICKHOUSE_PASSWORD=gorm
+    ports:
+      - 9941:8123
+      - 9942:9000
+      - 9943:9009
+```
+
+Run `docker-compose up -d` after saving this to `docker-compose.yml`.
+
+---
+
+## 2. Adding GORM ClickHouse Driver to Your Go Project
+
+### Step 1: Initialize Your Go Module (If Not Already)
+
+Open your project directory in the terminal and initialize the Go module:
+
+```bash
+cd /path/to/your/project
+
+go mod init your_project_name
+```
+
+This step ensures your project manages dependencies properly.
+
+### Step 2: Import and Install the GORM ClickHouse Driver
+
+Run the following command to add the GORM ClickHouse driver and dependencies to your module:
+
+```bash
+go get -u gorm.io/driver/clickhouse
+```
+
+This command fetches the driver package and updates your `go.mod` file.
+
+### Step 3: Import Driver in Your Go Code
+
+In your Go source file where you manage database connections, import the driver alongside GORM:
+
+```go
+import (
+    "gorm.io/driver/clickhouse"
+    "gorm.io/gorm"
+)
+```
+
+---
+
+## 3. Setting Up Your Database Connection
+
+### Step 4: Define the Data Source Name (DSN)
+
+Prepare the DSN string that holds your connection details. It follows this pattern:
+
+```
+clickhouse://username:password@host:port/database?param1=value1&param2=value2
+```
+
+Example DSN connecting to a local ClickHouse server:
+
+```go
+dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+```
+
+### Step 5: Open the Connection Using GORM
+
+Use the DSN above to open the connection with the GORM ClickHouse driver:
+
+```go
+import (
+    "gorm.io/driver/clickhouse"
+    "gorm.io/gorm"
+)
+
+db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+if err != nil {
+    panic("failed to connect database")
+}
+```
+
+If connection succeeds, you now have a `*gorm.DB` instance ready for use.
+
+---
+
+## 4. Verifying Your Installation
+
+To confirm the driver is correctly installed and connected:
+
+- Run a simple query or migration
+- Check no errors occur on basic operations
+
+Example:
+
+```go
+type User struct {
+    Name string
+    Age  int
+}
+
+// Auto migrate the User model
+err = db.AutoMigrate(&User{})
+if err != nil {
+    panic(err)
+}
+
+// Insert a record
+if err := db.Create(&User{Name: "Angeliz", Age: 18}).Error; err != nil {
+    panic(err)
+}
+
+// Query the inserted record
+var user User
+if err := db.First(&user, "name = ?", "Angeliz").Error; err != nil {
+    panic(err)
+}
+
+fmt.Printf("User found: %v, Age: %d\n", user.Name, user.Age)
+```
+
+Success means your project is now properly configured with the GORM ClickHouse driver.
+
+---
+
+## 5. Production Setup Considerations
+
+- **Version compatibility**: Use the appropriate version of ClickHouse server and the driver. ClickHouse >= 20.4 supports features like renaming columns.
+- **Advanced connection options**: For production, you can configure the connection with more control using the `clickhouse-go/v2` driver alongside `gorm.io/driver/clickhouse`.
+
+Example advanced setup snippet:
+
+```go
+import (
+  std_ck "github.com/ClickHouse/clickhouse-go/v2"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+  "time"
+  "crypto/tls"
+)
+
+func main() {
+  sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+    Addr: []string{"127.0.0.1:9999"},
+    Auth: std_ck.Auth{
+      Database: "default",
+      Username: "default",
+      Password: "",
+    },
+    TLS: &tls.Config{
+      InsecureSkipVerify: true,
+    },
+    Settings: std_ck.Settings{
+      "max_execution_time": 60,
+    },
+    DialTimeout: 5 * time.Second,
+    Compression: &std_ck.Compression{
+      std_ck.CompressionLZ4,
+    },
+    Debug: true,
+  })
+  if err != nil {
+    panic(err)
+  }
+
+  db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+    Conn: sqlDB,
+  }), &gorm.Config{})
+  if err != nil {
+    panic(err)
+  }
+
+  // use `db` as usual
+}
+```
+
+This method allows more flexibility on connection parameters such as TLS, timeouts, and compression.
+
+---
+
+## 6. Tips and Best Practices
+
+- Always keep your ClickHouse server up to date for better compatibility and features.
+- Use Go modules to reliably manage dependencies.
+- Test your connection early before implementing complex queries.
+- Handle errors explicitly during connection to catch network or authentication problems early.
+- Use environment variables to securely manage credentials and avoid hardcoding DSNs.
+
+---
+
+## 7. Troubleshooting Common Issues
+
+<AccordionGroup title="Common Installation Issues">
+<Accordion title="Cannot connect to ClickHouse server">
+- Verify the ClickHouse server is running and reachable at the specified host and port.
+- Confirm firewall or network policies allow traffic.
+- Double-check username and password for accuracy.
+- Check if the server requires TLS and configure accordingly.
+</Accordion>
+<Accordion title="Go module dependency errors">
+- Run `go mod tidy` to clean up module dependencies.
+- Ensure your Go version supports modules.
+- Check for proxy or cache issues with `GOPROXY` environment variable.
+</Accordion>
+<Accordion title="Driver import errors">
+- Confirm `gorm.io/driver/clickhouse` is properly installed.
+- Check import paths for typos.
+</Accordion>
+</AccordionGroup>
+
+---
+
+## Summary
+
+You have successfully added the GORM ClickHouse Driver to your Go project. With the driver installed and connected, you can now leverage ClickHouse's analytical power directly through GORM's intuitive ORM interface.
+
+For next steps, look into configuring migrations, performing CRUD operations, and optimizing batch inserts with GORM ClickHouse.
+
+---
+
+## Additional Resources
+
+- [Official GORM documentation](https://gorm.io)
+- [GORM ClickHouse GitHub repository](https://github.com/go-gorm/clickhouse)
+- [ClickHouse official Docker image](https://hub.docker.com/r/yandex/clickhouse-server)
+- Related Guides:
+  - [Prerequisites & System Requirements](../setup-and-installation/prerequisites-system-requirements)
+  - [Configuration & Connection Setup](../setup-and-installation/configuration-connection-setup)
+  - [Quickstart: Your First Query](../your-first-run/quickstart-basic-usage)
+
+
+---
+
+<Check>
+To verify your installation:
+1. Run `go mod tidy` and `go build` without errors.
+2. Successfully connect to ClickHouse using the DSN.
+3. AutoMigrate a sample model without errors.
+4. Perform simple database operations such as create and query.
+</Check>

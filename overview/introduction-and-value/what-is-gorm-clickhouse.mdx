@@ -1,0 +1,157 @@
+---
+title: "What is GORM ClickHouse?"
+description: "An overview of the GORM ClickHouse Driver—explaining its purpose as a seamless bridge between Go, GORM, and ClickHouse. Understand when and why you'd pick this driver for high-performance analytical storage within your applications."
+---
+
+# What is GORM ClickHouse?
+
+## Unlock High-Performance Analytics with Seamless Go Integration
+
+GORM ClickHouse is a dedicated driver that bridges your Go applications to the powerful ClickHouse analytical database through the elegant and user-friendly GORM ORM. It empowers Go developers to harness ClickHouse’s lightning-fast columnar storage and real-time analytics features without sacrificing the simplicity and productivity of GORM’s ORM abstraction.
+
+### Why Choose GORM ClickHouse?
+- **Effortless Integration:** Instantly connect your Go application to ClickHouse using familiar GORM patterns and idioms.
+- **High-Speed Analytics:** Leverage ClickHouse’s column-oriented storage and vectorized query execution to handle trillions of rows with minimal latency.
+- **Rich ORM Features:** Use GORM's rich functionality—auto migrations, CRUD operations, associations—tailored for ClickHouse’s unique architecture.
+- **Customizable Configurations:** Fine-tune connection, compression, indexing, and table settings specific to the analytical workloads of ClickHouse.
+
+### Who Should Use This Driver?
+If your Go-based systems require advanced analytical storage, real-time reporting, or large-scale data warehousing combined with the convenience of ORM abstractions, GORM ClickHouse is designed for you. Ideal for data engineers, backend developers, and teams building performant analytics platforms.
+
+---
+
+## Introduction to GORM ClickHouse Driver
+
+GORM ClickHouse acts as the seamless integration layer between Go applications, the GORM ORM, and ClickHouse's high-performance database engine. It abstracts away the complexities of ClickHouse's SQL dialect and connection specifics, offering a smooth developer experience that fits naturally into Go’s idiomatic programming style.
+
+### Core Purpose
+ClickHouse excels in scenarios demanding high-throughput and low-latency analysis over large datasets. By providing a GORM Dialector for ClickHouse, this project lets you use your existing GORM-based data models and queries while transparently leveraging ClickHouse’s analytical capabilities. You don’t need to learn new APIs or write complex SQL: GORM handles model migrations, queries, and transactions adapted for ClickHouse in the background.
+
+### What Sets GORM ClickHouse Apart?
+- **Native ClickHouse Compatibility:** Unlike generic SQL drivers, this driver understands ClickHouse-specific features such as engine types (MergeTree), column types (DateTime64), specialized indexes, and optimizations.
+- **Automatic Feature Detection:** It adapts its behavior based on the ClickHouse server version to avoid unsupported operations and maximize performance.
+- **GORM Native Extensions:** Implements custom callbacks for create and update operations suitable for ClickHouse semantics.
+- **Advanced Configuration Options:** Supports nuanced control over datetime precision, compression algorithms (LZ4 by default), index types, and distributed table configurations.
+
+### How It Works
+The driver wraps ClickHouse’s official Go client and implements GORM’s Dialector interface. Upon initialization, it establishes a connection pool, registers customized SQL clause builders, and overrides key GORM behaviors to accommodate ClickHouse's database constraints and features.
+
+<AccordionGroup title="GORM ClickHouse Key Components">
+  <Accordion title="Connection Initialization">
+    The driver takes a ClickHouse DSN or an existing connection to establish connectivity. It sets customized timeout, TLS, and compression settings automatically or by developer configuration to optimize communication with ClickHouse nodes.
+  </Accordion>
+  <Accordion title="Schema Migrations">
+    It extends GORM’s migration capabilities with ClickHouse-specific datatype mappings, default value handling, and DDL query adjustments, enabling you to perform table creation, column alterations, and indexing aligned with ClickHouse’s engine requirements.
+  </Accordion>
+  <Accordion title="Query Callbacks">
+    The driver overrides GORM’s default Create, Update, and Delete callbacks to produce compatible SQL statements that handle ClickHouse’s specifics like ALTER TABLE commands for DELETE and UPDATE, instead of traditional SQL statements.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Key Features & Capabilities
+
+- **Seamless GORM Integration:** Use standard GORM APIs while the driver translates these calls into efficient ClickHouse-specific SQL.
+- **Advanced Data Types Support:** Automatically maps Go types to ClickHouse native types, including UInt variants, DateTime64 with precision, Nullable fields, and Map types.
+- **High-Performance Batch Operations:** Supports batch inserts tailored for ClickHouse’s bulk-loading patterns.
+- **Customizable Table Engines and Indexing:** Easily specify and manage table engines (e.g., MergeTree families) and secondary indexes with granularity settings.
+- **Version-Aware Behavior:** Detects ClickHouse server version to enable or disable features like column renaming or datetime precision.
+- **Distributed Table Support:** Transparently supports migration and querying across distributed ClickHouse clusters.
+
+### Practical Example: Creating and Querying Users
+```go
+package main
+
+import (
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+type User struct {
+  Name string
+  Age  int
+}
+
+func main() {
+  dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+  db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+  if err != nil {
+    panic("failed to connect database")
+  }
+
+  // Auto migrate creates the table if it doesn't exist
+  db.AutoMigrate(&User{})
+
+  // Insert a new user
+  db.Create(&User{Name: "Alice", Age: 30})
+
+  // Query users with age > 20
+  var users []User
+  db.Find(&users, "age > ?", 20)
+
+  for _, user := range users {
+    println(user.Name, user.Age)
+  }
+}
+```
+
+---
+
+## Why Should You Care?
+
+Switching to GORM ClickHouse enables your Go applications to tap into ClickHouse’s strengths effortlessly:
+- **Achieve Massive Scale:** Process trillions of rows and complex analytical queries with sub-second response time.
+- **Maintain Developer Productivity:** No need to abandon familiar GORM abstractions or write cumbersome SQL manually.
+- **Optimize Resource Usage:** Efficient data compression and indexing reduce storage costs and improve throughput.
+- **Scale Across Clusters:** Support multi-node distributed setups easily using GORM’s familiar migration and query interfaces.
+
+#### Use Cases
+- Real-time analytics dashboards
+- Large-scale event logging and metrics
+- Time-series data processing
+- Business intelligence platforms
+
+##### Before and After GORM ClickHouse Adoption
+| Without Driver              | With GORM ClickHouse               |
+|----------------------------|----------------------------------|
+| Manual SQL for ClickHouse  | Use GORM models and methods       |
+| Complex connection handling| Simple DSN based connection setup|
+| Limited batch insert tools | Efficient batch inserts out-of-box|
+| Separate migration tooling | Auto migrations via GORM          |
+
+---
+
+## Getting Started Preview
+
+### Quick Start
+To get started, define your Go structs as usual and open a connection with GORM ClickHouse Dialector:
+```go
+dsn := "clickhouse://user:pass@localhost:9000/dbname"
+db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+```
+Run `AutoMigrate` to create or update tables and start using GORM’s CRUD methods immediately.
+
+### Prerequisites
+- ClickHouse server running and accessible
+- Go environment with GORM and driver installed (`go get gorm.io/driver/clickhouse`)
+
+### Next Steps
+- Consult the **Key Value & Use Cases** page to explore advanced scenarios
+- Check out the **Connecting to ClickHouse** guide for detailed connection options
+- Learn about migrations and batch processing in their respective guide pages
+
+<Tip>
+For the best results, ensure your ClickHouse server version supports all required features (ideally 20.4 or later). Use the driver’s version detection to adapt to your environment.
+</Tip>
+
+---
+
+## Additional Resources
+- [Official GORM Documentation](https://gorm.io)
+- [ClickHouse Official Repository](https://github.com/ClickHouse/ClickHouse)
+- [GORM ClickHouse GitHub Repository](https://github.com/go-gorm/clickhouse)
+
+---
+
+Empower your Go applications with the speed, scale, and simplicity of ClickHouse analytics — through the trusted convenience of GORM and the specialized GORM ClickHouse driver.

@@ -1,0 +1,328 @@
+---
+title: "Connecting to ClickHouse"
+description: "Learn how to establish a connection between GORM and a ClickHouse database, including DSN formats, authentication, and cluster support. Covers recommended defaults and troubleshooting connection issues."
+---
+
+# Connecting to ClickHouse with GORM ClickHouse Driver
+
+Establishing a reliable connection between your Go application using GORM and a ClickHouse database is the foundation of leveraging the GORM ClickHouse driver. This guide walks you through creating your connection, understanding the necessary parameters, managing authentication, and configuring cluster support to unlock ClickHouse's full analytical power.
+
+---
+
+## 1. Workflow Overview
+
+### Task Description
+Learn how to connect your Go application to a ClickHouse database using the GORM ClickHouse driver. This includes configuring DSN strings, authentication, cluster options, and handling recommended defaults.
+
+### Prerequisites
+- Go 1.18+ installed and your project initialized with Go modules.
+- ClickHouse server running and accessible (local Docker, remote, or cluster).
+- Basic familiarity with GORM and ClickHouse concepts.
+
+### Expected Outcome
+By completing this guide, your application will successfully establish a connection to ClickHouse, enabling you to perform migrations, CRUD operations, and harness analytical queries via GORM.
+
+### Time Estimate
+5-10 minutes to complete setup and verify the connection.
+
+### Difficulty Level
+Beginner to Intermediate.
+
+---
+
+## 2. Step-by-Step Connection Setup
+
+### Step 1: Confirm ClickHouse Server is Running
+Ensure your ClickHouse server is running and reachable. A common approach is to use Docker:
+
+```yaml
+version: "3"
+services:
+  server:
+    image: yandex/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=gorm
+      - CLICKHOUSE_USER=gorm
+      - CLICKHOUSE_PASSWORD=gorm
+    ports:
+      - 9941:8123    # HTTP API
+      - 9942:9000    # Native TCP
+      - 9943:9009    # TCP for inter-server communications
+```
+
+Run the container using:
+
+```bash
+docker-compose up -d
+```
+
+This setup creates a `gorm` database with user credentials `gorm:gorm`.
+
+### Step 2: Understand DSN (Data Source Name) Format
+The DSN controls how GORM connects to ClickHouse. The basic format is:
+
+```
+clickhouse://username:password@host:port/database?options
+```
+
+- `username` and `password`: Credentials for authentication.
+- `host` and `port`: Server location and TCP port (default native port is usually 9000).
+- `database`: Target database in ClickHouse (must exist).
+- `options`: Connection parameters such as timeouts.
+
+**Example:**
+
+```go
+dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+```
+
+This DSN connects to the `gorm` database on localhost:
+- Dial timeout of 10 seconds
+- Read timeout of 20 seconds
+
+
+### Step 3: Initialize the Connection in Your Go Application
+Import necessary packages:
+
+```go
+import (
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+)
+```
+
+Open your connection with the DSN:
+
+```go
+db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+if err != nil {
+	panic("failed to connect database")
+}
+```
+
+### Step 4: Use Connection Options and Defaults
+You can tune your connection by adjusting DSN parameters or advanced config.
+
+- **Disable datetime precision:** if your ClickHouse version does not support `DateTime64`, disable it.
+- **Skip version initialization:** to avoid queries fetching server version.
+- **Default granularity, compression, and index types:** will be used for migrations and table creation.
+
+Example with advanced config:
+
+```go
+import (
+  std_ck "github.com/ClickHouse/clickhouse-go/v2"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+	Addr: []string{"127.0.0.1:9942"},
+	Auth: std_ck.Auth{
+		Database: "gorm",
+		Username: "gorm",
+		Password: "gorm",
+	},
+	DialTimeout: 5 * time.Second,
+	Compression: &std_ck.Compression{
+		std_ck.CompressionLZ4,
+	},
+})
+
+if err != nil {
+	panic(err)
+}
+
+db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+	Conn: sqlDB,
+}), &gorm.Config{})
+if err != nil {
+	panic(err)
+}
+```
+
+### Step 5: Support for Clusters
+If your ClickHouse environment uses distributed clusters, configure your tables accordingly using GORM.
+
+Example for distributed tables:
+
+```go
+// Set distributed table option during migration
+
+db.Set("gorm:table_options", "ENGINE=Distributed(cluster, default, hits)").AutoMigrate(&User{})
+
+// Or set cluster options explicitly
+
+db.Set("gorm:table_cluster_options", "on cluster default").AutoMigrate(&User{})
+```
+
+This enables consistent table creation across cluster nodes.
+
+### Step 6: Verify Connection
+Check the connection and run a simple operation like an AutoMigrate or a basic query:
+
+```go
+// Auto Migrate your model
+err = db.AutoMigrate(&User{})
+if err != nil {
+	panic(err)
+}
+
+// Insert a row
+err = db.Create(&User{Name: "Alice", Age: 30}).Error
+if err != nil {
+	panic(err)
+}
+
+// Query back
+var users []User
+err = db.Find(&users).Error
+if err != nil {
+	panic(err)
+}
+```
+
+Your connection is reliable if these operations succeed without errors.
+
+---
+
+## 3. Common Connection Parameters Explained
+
+- **dial_timeout**: Maximum time to wait establishing a connection.
+- **read_timeout**: Time limit for reading responses.
+- **max_execution_time**: Max execution time for queries on ClickHouse side.
+- **compression**: Compression method such as "LZ4" to optimize network usage.
+
+Adjust these parameters in DSN query strings or advanced options.
+
+---
+
+## 4. Troubleshooting Connection Issues
+
+### Problem: Unable to connect to ClickHouse server
+- Check if ClickHouse is running and accessible at the specified host and port.
+- Confirm username, password, and database name are correct.
+- Verify network connectivity or firewall configurations.
+
+### Problem: Authentication failures
+- Confirm ClickHouse users and passwords are properly set.
+- Check for case sensitivity in credentials.
+- Ensure the user has access to the target database.
+
+### Problem: Timeout errors
+- Increase `dial_timeout` or `read_timeout` values.
+- Check server load or network latency.
+
+### Problem: Version incompatibility
+- Disable datetime precision if using older ClickHouse versions.
+- Skip version initialization only if you are certain of compatibility.
+
+
+<Tip>
+Use GORM's `Debug()` mode to get detailed logs:
+
+```go
+db = db.Debug()
+```
+
+This helps identify SQL generation and connection issues.
+</Tip>
+
+---
+
+## 5. Best Practices and Tips
+
+- Always parameterize your DSN credentials securely — avoid hardcoding passwords.
+- Use connection pooling by default; GORM manages this internally when reusing `gorm.DB`.
+- For production, use TLS options in the advanced config with `clickhouse-go`.
+- Prefer batch inserts for performance-critical applications.
+- Test connections before automating migrations or bulk operations.
+
+---
+
+## 6. Examples
+
+### Minimal Connection Example
+
+```go
+package main
+
+import (
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+)
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func main() {
+	dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+	db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	db.AutoMigrate(&User{})
+	db.Create(&User{Name: "John", Age: 25})
+
+	var users []User
+	db.Find(&users, "age > ?", 20)
+
+	for _, u := range users {
+		println(u.Name, u.Age)
+	}
+}
+```
+
+### Advanced Connection with Existing Database Handle
+
+```go
+package main
+
+import (
+	std_ck "github.com/ClickHouse/clickhouse-go/v2"
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+	"time"
+)
+
+func main() {
+	conn, err := std_ck.OpenDB(&std_ck.Options{
+		Addr: []string{"127.0.0.1:9942"},
+		Auth: std_ck.Auth{
+			Database: "gorm",
+			Username: "gorm",
+			Password: "gorm",
+		},
+		DialTimeout: 5 * time.Second,
+		Compression: &std_ck.Compression{std_ck.CompressionLZ4},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+		Conn: conn,
+	}), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+
+	// Use db as usual
+}
+```
+
+---
+
+## 7. Next Steps & Related Content
+
+- **Database Migrations and Table Options**: Learn how to manage and customize your database schema.
+- **Performing Basic CRUD Operations**: Next, explore how to create, read, update, and delete data.
+- **Advanced Configuration & Customizing Connections**: Fine-tune your connection parameters and security.
+- **Troubleshooting & Validation**: If you encounter issues, see detailed diagnostics and fixes.
+
+Refer to the [Getting Started Guides](../getting-started/) in this documentation for comprehensive onboarding.
+
+---

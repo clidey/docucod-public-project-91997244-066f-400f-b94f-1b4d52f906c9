@@ -1,0 +1,154 @@
+---
+title: "Prerequisites & System Requirements"
+description: "Review the essential requirements for working with the GORM ClickHouse Driver, including supported Go versions, GORM compatibility, ClickHouse server requirements, and any mandatory environment dependencies. This is the foundation for a successful installation and usage experience."
+---
+
+# Prerequisites & System Requirements
+
+This guide details the essential requirements you must meet before installing and using the GORM ClickHouse Driver. Ensuring your environment complies with these prerequisites is critical for a smooth setup experience and reliable operation.
+
+---
+
+## 1. Supported Go and GORM Versions
+
+- **Go Language:**
+  - Use Go version 1.16 or later for full compatibility.
+- **GORM:**
+  - Compatible with GORM v2, the latest stable GORM ORM version.
+  - Older GORM versions are not supported.
+
+<Tip>
+Confirm your Go and GORM versions before proceeding by running:
+```bash
+go version
+gopkg.in/gorm.v2 v2.0.0 or later
+```
+</Tip>
+
+## 2. ClickHouse Server Requirements
+
+- **Version:**
+  - ClickHouse server must be version 20.4 or higher to support all driver features.
+  - Avoid using versions below 20.4, which lack critical features such as renaming columns and column precision support.
+- **Network Accessibility:**
+  - Ensure the ClickHouse server is reachable from your Go application environment.
+  - Default ports used by the driver are:
+    - HTTP interface: `8123` (mapped externally as you configure)
+    - Native TCP interface: `9000`
+    - TCP interface for inter-server communication: `9009`
+
+<Info>
+The official Docker image `yandex/clickhouse-server:latest` can be used to quickly launch a compliant ClickHouse server.
+
+Sample docker-compose snippet:
+```yaml
+version: "3"
+services:
+  server:
+    image: yandex/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=gorm
+      - CLICKHOUSE_USER=gorm
+      - CLICKHOUSE_PASSWORD=gorm
+    ports:
+      - 9941:8123
+      - 9942:9000
+      - 9943:9009
+```
+Adapt port mappings as needed for your environment.
+</Info>
+
+## 3. Operating System & Hardware
+
+- The GORM ClickHouse driver is platform independent and runs anywhere Go is supported.
+- Recommended minimum system requirements for running ClickHouse server:
+  - Linux-based OS (recommended for best performance), but Docker-based deployment works cross-platform.
+  - At least 4GB of RAM and a modern multi-core CPU.
+  - Stable network connection for database communication.
+
+## 4. Environment Dependencies
+
+- **Docker (Optional but Recommended):**
+  - To facilitate ClickHouse server installation and to manage dependencies efficiently, Docker is highly recommended.
+  - Docker Compose is useful for managing multi-container setups (e.g., clustering).
+- **Network Configuration:**
+  - Open required ports between your application server and ClickHouse server (default 9000 for native TCP, 8123 for HTTP).
+  - Firewall rules should allow these connections.
+
+## 5. Database Credentials
+
+Before connecting, ensure you have the following credentials:
+
+- Username (default: `gorm` in example)
+- Password
+- Database name (default: `gorm` in example)
+
+Use these in your DSN connection string.
+
+---
+
+## Common Pitfalls & Tips
+
+- **Incorrect Port Mapping:**
+  - Verify your Docker port mappings match the DSN used in your application.
+  - For example, if the Docker `9000` port is mapped to `9942` on localhost, your DSN must reflect `localhost:9942`.
+
+- **Outdated ClickHouse Version:**
+  - Attempting to use features like column renaming on ClickHouse versions below 20.4 will fail.
+
+- **Missing or Misconfigured Credentials:**
+  - Ensure your ClickHouse server user has the required permissions and your DSN includes the correct username and password.
+
+- **Firewall Issues:**
+  - Network timeouts often stem from blocked ports; verify connectivity.
+
+---
+
+## Verification Checklist
+
+After confirming prerequisites, verify your setup:
+
+1. **Check Go and GORM versions:**
+   ```bash
+go version
+go list -m all | grep gorm
+```
+2. **Ensure ClickHouse server is running and listening:**
+   ```bash
+docker ps
+# and
+netstat -tuln | grep 9000
+```
+3. **Test connectivity with `clickhouse-client` or TCP tool:**
+   ```bash
+clickhouse-client --host=localhost --port=9942 --user=gorm --password=gorm
+```
+4. **Review logs for errors or warnings.**
+
+---
+
+## Next Steps
+
+Once all prerequisites are met, proceed to the [Installation Guide](/getting-started/setup-and-installation/installation) to install and configure the GORM ClickHouse driver.
+
+For a deeper understanding of ClickHouse concepts such as clustering, granularity, and compression, consult the [Core Terminology Guide](/overview/architecture-and-concepts/core-terminology).
+
+For hands-on examples of migrations and CRUD operations, refer to the [Database Migrations and Table Options](/guides/getting-started/running-migrations) and [Performing Basic CRUD Operations](/guides/getting-started/basic-crud) pages.
+
+---
+
+# References
+
+- [Official GORM ClickHouse Repository](https://github.com/go-gorm/clickhouse)
+- ClickHouse Docker Image: `yandex/clickhouse-server`
+- [GORM Official Documentation](https://gorm.io)
+
+---
+
+# Summary
+
+This page ensures you have all essential system resources, compatible software versions, and network settings to smoothly install and use the GORM ClickHouse Driver.
+
+Understanding and meeting these requirements will prevent common setup failures and enable a solid foundation for your database development workflow.
+
+---

@@ -1,0 +1,261 @@
+---
+title: "Configuration & Connection Setup"
+description: "Learn how to configure the GORM ClickHouse Driver with proper DSN strings, authentication, TLS settings, and optional parameters. This page includes detailed examples of establishing a connection, initializing configuration options, and managing credentials securely."
+---
+
+# Configuration & Connection Setup
+
+Learn how to configure the GORM ClickHouse Driver with proper DSN strings, authentication, TLS settings, and optional parameters. This guide walks you through creating reliable connections to ClickHouse, initializing configuration options, and securely managing credentials.
+
+---
+
+## 1. Understanding Connection Parameters
+
+The GORM ClickHouse Driver requires a well-formed Data Source Name (DSN) string to establish a connection to your ClickHouse instance. The DSN includes protocol, credentials, host(s), port(s), database name, and optional query parameters.
+
+### DSN Format
+
+```
+clickhouse://username:password@host1:port1,host2:port2/database?param1=value1&param2=value2
+```
+
+- **username**: ClickHouse username
+- **password**: Password for the user
+- **host(s)**: One or more hosts separated by commas
+- **port(s)**: Corresponding ports for each host
+- **database**: Target ClickHouse database
+- **parameters**: Optional connection parameters such as timeouts
+
+
+### Common DSN Parameters
+
+| Parameter           | Description                                | Example      |
+|---------------------|--------------------------------------------|--------------|
+| `dial_timeout`      | Timeout for establishing the connection   | `10s`        |
+| `read_timeout`      | Timeout for reading data                    | `20s`        |
+| `max_execution_time`| Set max allowed query execution time       | `60` seconds |
+
+
+---
+
+## 2. Basic Connection Example
+
+This example demonstrates how to open a connection using the DSN string.
+
+```go
+package main
+
+import (
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+	"log"
+)
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func main() {
+	dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+	db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect to ClickHouse: %v", err)
+	}
+
+	// Use AutoMigrate to create the table if it does not exist
+	db.AutoMigrate(&User{})
+
+	// Insert sample data
+	db.Create(&User{Name: "Angeliz", Age: 18})
+
+	// Query the data
+	var users []User
+	db.Find(&users, "name = ?", "Angeliz")
+	for _, u := range users {
+		log.Printf("User: %+v", u)
+	}
+}
+```
+
+
+---
+
+## 3. Advanced Connection Configuration
+
+For more complex setups or fine-grained control, you can use the `Config` struct to initialize the driver with advanced options.
+
+### Example Using Existing `clickhouse-go` Connection
+
+```go
+package main
+
+import (
+	std_ck "github.com/ClickHouse/clickhouse-go/v2"
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+	"time"
+)
+
+func main() {
+	// Establish base connection with advanced options
+	sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+		Addr: []string{"127.0.0.1:9999"},
+		Auth: std_ck.Auth{
+			Database: "default",
+			Username: "default",
+			Password: "",
+		},
+		Settings: std_ck.Settings{
+			"max_execution_time": 60,
+		},
+		DialTimeout: 5 * time.Second,
+		Compression: &std_ck.Compression{
+			std_ck.CompressionLZ4,
+		},
+		Debug: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Use the existing connection with GORM ClickHouse driver
+	db, err := gorm.Open(clickhouse.New(clickhouse.Config{
+		Conn: sqlDB,
+		// Optional: 
+		DisableDatetimePrecision: false, // ClickHouse 20.4+ supports datetime precision.
+		DontSupportRenameColumn: false,  // rename column supported in 20.4+.
+		DefaultGranularity:       3,      // tunable granularity setting
+		DefaultCompression:       "LZ4", // default compression algorithm
+		DefaultIndexType:         "minmax",
+		DefaultTableEngineOpts:   "ENGINE=MergeTree() ORDER BY tuple()",
+	}))
+	if err != nil {
+		panic(err)
+	}
+
+	// Ready to use db...
+}
+```
+
+
+---
+
+## 4. Configuration Options Explained
+
+| Config Field                  | Description                                                                                 |
+|------------------------------|---------------------------------------------------------------------------------------------|
+| `DSN`                        | The full DSN string used for connection.                                                   |
+| `Conn`                       | Existing `gorm.ConnPool` or Go `sql.DB` connection to reuse.                               |
+| `DisableDatetimePrecision`   | Disables `DateTime64` precision for compatibility with older ClickHouse versions.         |
+| `DontSupportRenameColumn`    | Sets behavior for rename column support based on ClickHouse version.                       |
+| `DontSupportColumnPrecision` | Flag to disable column precision feature where not supported.                              |
+| `DontSupportEmptyDefaultValue` | Avoids treating empty strings as valid default values during migrations.                  |
+| `SkipInitializeWithVersion`  | Skip version auto-detection for driver configuration.                                      |
+| `DefaultGranularity`         | Sets default granularity level for MergeTree engine (1 granule = 8192 rows).               |
+| `DefaultCompression`         | Default compression algorithm (e.g., `LZ4`).                                              |
+| `DefaultIndexType`           | Default index type used by migrations and index creation (`minmax` is default).            |
+| `DefaultTableEngineOpts`     | Default engine and order definition for new tables (e.g., `ENGINE=MergeTree() ORDER BY tuple()`). |
+
+---
+
+## 5. Setting Credentials Securely
+
+To protect your credentials:
+
+- Avoid hardcoding username and password directly in source code.
+- Use environment variables or secret management tools to inject DSN parts at runtime.
+- For Docker environments, set credentials using Docker environment variables mapped securely.
+
+Example replacing user and password with env variables:
+
+```go
+import "os"
+
+user := os.Getenv("CLICKHOUSE_USER")
+pass := os.Getenv("CLICKHOUSE_PASSWORD")
+dsn := fmt.Sprintf("clickhouse://%s:%s@localhost:9942/gorm", user, pass)
+```
+
+---
+
+## 6. TLS/SSL Configuration
+
+If your ClickHouse server requires TLS connections, the underlying `clickhouse-go/v2` driver options support TLS settings.
+
+Example snippet for TLS config when using `std_ck.OpenDB`:
+
+```go
+import (
+	"crypto/tls"
+	std_ck "github.com/ClickHouse/clickhouse-go/v2"
+)
+
+sqlDB, err := std_ck.OpenDB(&std_ck.Options{
+	Addr: []string{"host:9440"},
+	Auth: std_ck.Auth{
+		Database: "default",
+		Username: "user",
+		Password: "pass",
+	},
+	TLS: &tls.Config{
+		InsecureSkipVerify: true, // only if you trust the cert or during testing
+	},
+})
+```
+
+Pass this `sqlDB` to GORM as shown in the advanced configuration example.
+
+---
+
+## 7. Verification & Troubleshooting
+
+### Verifying Connection Success
+
+After calling `gorm.Open()`, check the error returned. A nil error confirms successful configuration.
+
+### Common Issues
+
+- **Timeouts**: Ensure `dial_timeout` and `read_timeout` are set to values adequate for your network latency and ClickHouse load.
+- **Credential Errors**: Double-check username, password, and database permissions.
+- **TLS Problems**: Verify that your TLS certificates are valid and the `tls.Config` is correctly set.
+- **Multiple Hosts**: When connecting to clusters via multiple hosts in DSN, ensure that all hosts and ports are reachable.
+
+### Tips
+
+- Use `db = db.Debug()` to enable SQL query logging for debugging.
+- Use `SkipInitializeWithVersion` flag to disable version-based behavior if version detection causes failures.
+
+---
+
+## 8. Next Steps
+
+- After connection setup, consult the [Running Migrations guide](/guides/getting-started/running-migrations) to create and modify tables.
+- Explore [Basic CRUD Operations](/guides/getting-started/basic-crud) to perform data operations.
+- For performance optimization, review [Batch Inserts and Performance Patterns](/guides/advanced-usage/batch-inserts-performance).
+
+---
+
+## References
+
+- [GORM ClickHouse GitHub Repository](https://github.com/go-gorm/clickhouse)
+- [Official ClickHouse Go Driver](https://github.com/ClickHouse/clickhouse-go)
+- [GORM Documentation](https://gorm.io)
+
+---
+
+## Summary Diagram of Connection Flow
+
+```mermaid
+flowchart TD
+    A[Application] -->|DSN or Config| B[GORM ClickHouse Dialector]
+    B -->|Establish| C[ClickHouse Client (clickhouse-go/v2)]
+    C -->|Connect| D[ClickHouse Server Cluster]
+    D -->|Response| C
+    C -->|DB Connection Pool| B
+    B -->|CRUD Operations| A
+```
+
+This flow illustrates how your application configures and connects to ClickHouse through the GORM ClickHouse driver, leveraging the underlying Go client and pool to communicate with the ClickHouse server cluster.
+
+---

@@ -1,0 +1,233 @@
+---
+title: "System Architecture"
+description: "A diagram and explanation of how the GORM ClickHouse driver fits into the data stack. Follow the flow from Go application code through GORM to ClickHouse, including connection management and native Go driver integration. Highlight configuration touchpoints and where user code connects."
+---
+
+# System Architecture
+
+## Understanding the Role of the GORM ClickHouse Driver in Your Data Stack
+
+Building applications that leverage ClickHouse’s powerful analytics capabilities while maintaining a seamless developer experience in Go requires a clear understanding of how the GORM ClickHouse driver integrates into your stack. This documentation unpacks the architecture to illustrate the journey of your data and commands from your Go application code through GORM’s object-relational mapping layer down to the ClickHouse database.
+
+---
+
+### Why This Matters to You
+
+As a Go developer using GORM for database abstraction, you want to benefit from ClickHouse’s speed and scalability without compromising on the familiarity and convenience of GORM’s API. This architecture overview will help you:
+
+- Visualize how your application communicates with ClickHouse.
+- Understand key integration layers and components.
+- Identify where to configure and customize connection behaviors.
+- Troubleshoot connection or performance issues with a clearer mental model.
+
+
+---
+
+## 1. High-Level Overview: From Go Code to ClickHouse
+
+At its core, the system architecture orchestrates data flows from your application through several layers:
+
+1. **Go Application Layer**: Your business logic and data models written in Go define how you interact with the database.
+2. **GORM ORM Layer**: Provides an intuitive, idiomatic Go interface translating your code into SQL queries using ORM mappings.
+3. **GORM ClickHouse Driver Layer**: Acts as a bridge translating GORM-generated requests into ClickHouse-specific commands and queries.
+4. **ClickHouse Native Go Driver (clickhouse-go v2)**: Handles connection pooling, SQL execution, and communication with the database server.
+5. **ClickHouse Database Server**: The analytics engine, running your queries, storing data, and returning results.
+
+This layered approach leverages existing robust components to give you a smooth, efficient experience.
+
+
+### Visual Architecture Flow
+
+```mermaid
+flowchart TD
+
+  subgraph Go_Application
+    A[Your Go Code & Models]
+  end
+
+  subgraph ORM_Layer
+    B[GORM ORM]
+  end
+
+  subgraph ClickHouse_GORM_Driver
+    C[GORM ClickHouse Dialector & Migrator]
+  end
+  
+  subgraph Native_Driver
+    D[ClickHouse Native Go Driver (clickhouse-go v2)]
+  end
+
+  subgraph ClickHouse_DB
+    E[ClickHouse Database Server]
+  end
+
+  A -->|Calls ORM functions| B
+  B -->|Generates SQL & CLI instructions| C
+  C -->|Uses Native driver for connection & queries| D
+  D -->|Executes SQL calls| E
+  E -->|Returns results & status| D
+  D -->|Delivers data| C
+  C -->|Translates results to GORM| B
+  B -->|Returns data to| A
+
+```
+
+---
+
+## 2. Component Breakdown & User Connection Points
+
+### 2.1 Go Application Layer
+
+**What happens here:**
+- You write code that defines models, queries, inserts, migrations, and other data operations.
+- Your business logic interacts only with GORM's API.
+
+**User Interaction:**
+- Define structs that represent tables.
+- Call ORM methods like `.Create()`, `.Find()`, `.AutoMigrate()`.
+
+### 2.2 GORM ORM Layer
+
+**What happens here:**
+- Translates your Go struct usage into generic SQL constructs.
+- Handles schema parsing, query building, and lifecycle callbacks.
+
+**User Interaction:**
+- Mostly implicit; this is the familiar ORM layer you use daily.
+
+### 2.3 GORM ClickHouse Driver Layer
+
+This driver is a **custom GORM Dialector** that enables GORM to communicate properly with ClickHouse.
+
+**Responsibilities:**
+- Translate generic GORM SQL clauses into ClickHouse-specific dialect SQL (e.g., `ALTER TABLE ... DELETE` instead of `DELETE` SQL).
+- Implement schema migration semantics tuned to ClickHouse’s capabilities and quirks (e.g., column types, engines).
+- Provide customized clause builders for operations like update/delete.
+
+**User Interaction Points:**
+- Configure driver via parameters such as DSN, compression, precision handling.
+- Customize table options and cluster settings using `.Set()` before migrations.
+
+### 2.4 ClickHouse Native Go Driver (clickhouse-go v2)
+
+**What happens here:**
+- Managing the TCP/HTTP connections to ClickHouse.
+- Sending SQL commands and receiving responses.
+- Handling connection pooling, timeouts, retries, and compression.
+
+**User Interaction:**
+- Typically hidden behind the GORM layer but can be configured explicitly by passing an existing `sql.DB` connection.
+
+### 2.5 ClickHouse Database Server
+
+**What happens here:**
+- Executes SQL queries rapidly, optimized for analytics.
+- Manages table engines, partitions, and merges.
+
+**User Interaction:**
+- You configure ClickHouse externally but interact primarily through the driver interface.
+
+---
+
+## 3. Configuration Touchpoints and Best Practices
+
+### Connection Configuration
+- **DSN string:** Specify user credentials, hosts, database name, and timeouts.
+- **Compression:** Enable lossless compression like LZ4 for better network efficiency.
+- **Timeouts:** Configure dial and read timeouts to suit your network.
+- **Connection Pool:** Optionally provide a preconfigured `*sql.DB` to GORM for more advanced tuning.
+
+### Table Options
+- Use GORM’s `.Set("gorm:table_options", "ENGINE=...")` to specify ClickHouse table engines and ordering.
+- Use `.Set("gorm:table_cluster_options", "on cluster ...")` for cluster-aware tables.
+
+### Migration
+- The migrator adapts your Go struct definitions to ClickHouse CREATE/ALTER table statements.
+- Pay attention to ClickHouse version flags for supported features (column rename, precision).
+
+---
+
+## 4. Real-World Example: Connection Setup and Query Flow
+
+```go
+package main
+
+import (
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+type User struct {
+  Name string
+  Age  int
+}
+
+func main() {
+  dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+
+  // Open connection via GORM ClickHouse driver
+  db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+  if err != nil {
+    panic("failed to connect database")
+  }
+
+  // Auto migrate schema
+  db.AutoMigrate(&User{})
+
+  // Insert a record
+  db.Create(&User{Name: "Alice", Age: 30})
+
+  // Query example
+  var user User
+  db.Find(&user, "name = ?", "Alice")
+}
+```
+
+### Flow Summary
+- Your `.Create()` call enters the GORM layer.
+- GORM builds SQL suited for ClickHouse with help from the GORM ClickHouse driver.
+- The native driver sends this SQL to the database.
+- Results flow back up this chain to your Go code.
+
+---
+
+## 5. Troubleshooting Tips
+
+- **Connection failures:** Verify DSN, network accessibility, and credentials.
+- **Unsupported operations:** Some SQL features like renaming columns rely on ClickHouse version; check driver flags.
+- **Migrations errors:** Customize table options and use the migrator functions carefully.
+- **Performance:** Enable compression and optimize connection pool settings.
+
+---
+
+## 6. Next Steps
+
+- Explore **[Core Concepts & Terminology](/overview/architecture-and-concepts/core-terminology)** to deepen your understanding of ClickHouse and GORM concepts.
+- Review **[Advanced Configuration & Customizing Connections](/guides/advanced-usage/advanced-configuration-options)** for fine-tuning your database connections and behaviors.
+- Start **[Running Migrations & Table Options](/guides/getting-started/running-migrations)** to manage schemas effectively.
+
+
+---
+
+This architectural understanding puts you in control of your data workflows and empowers you to build efficient, maintainable Go applications backed by ClickHouse with GORM’s familiarity and power.
+
+
+---
+
+##### Source code references for architecture components:
+- [clickhouse.go](https://github.com/go-gorm/clickhouse/blob/main/clickhouse.go): Core driver implementation bridging GORM and ClickHouse native driver.
+- [migrator.go](https://github.com/go-gorm/clickhouse/blob/main/migrator.go): Schema migration and DDL management.
+- [update.go](https://github.com/go-gorm/clickhouse/blob/main/update.go): Special handling for update statements aligning with ClickHouse’s mechanism.
+
+---
+
+##### Learn more:
+- [GORM ClickHouse README](https://github.com/go-gorm/clickhouse/blob/main/README.md)
+- [ClickHouse Go Driver (clickhouse-go v2)](https://github.com/ClickHouse/clickhouse-go)
+- [ClickHouse Official Documentation](https://clickhouse.com/docs/en/)
+
+---
+
+<Info>
+This page focuses specifically on the system architecture and integration flow. For practical step-by-step connection setup or CRUD operation guides, please visit related sections in the **Getting Started** and **Guides** tabs.
+</Info>

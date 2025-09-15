@@ -1,0 +1,166 @@
+---
+title: "Key Value & Use Cases"
+description: "Explore the core benefits and sample scenarios—such as analytics, event logging, or timeseries data—where GORM ClickHouse shines. Highlight the product's support for rapid development, Go-native integration, and production-grade analytics workflows."
+---
+
+# Key Value & Use Cases
+
+## Unlocking the Power of GORM ClickHouse for Analytics and Timeseries Workloads
+
+GORM ClickHouse is designed to empower Go developers with rapid, native integration to ClickHouse — a cutting-edge, columnar analytical database optimized for large-scale data insertions and lightning-fast queries. This page explores the core benefits of using GORM ClickHouse and highlights concrete scenarios where this combination truly shines.
+
+---
+
+### Why GORM ClickHouse Matters
+
+When building analytics platforms or working with voluminous event logs and timeseries data, choosing the right data access layer can dramatically affect productivity and performance. GORM ClickHouse delivers:
+
+- **Go-Native Experience:** Seamlessly integrate ClickHouse queries directly within Go applications using GORM’s familiar ORM interface.
+- **Rapid Development:** Write less boilerplate SQL and focus more on business logic with idiomatic Go code.
+- **Production-Grade Analytics Workflows:** Support complex read-heavy workloads typical for analytics, log aggregation, and timeseries use cases.
+
+---
+
+## Core Benefits Tailored to Your Needs
+
+### 1. Intuitive Go Integration for Fast Analytics
+
+Developers enjoy a Go-native API — use structs, method chaining, and preloading exactly as you would with traditional databases, but optimized for ClickHouse’s unique characteristics. This reduces cognitive load, shortens development time, and minimizes context switching.
+
+### 2. Designed for High-Volume Data Ingestion
+
+ClickHouse is renowned for handling large batches of inserts efficiently. GORM ClickHouse supports batch operations and raw queries that leverage these strengths, letting your application ingest millions of events daily without bottlenecks.
+
+### 3. Flexible Schema Migrations
+
+Evolve your tables with confidence. GORM ClickHouse automates schema creation and supports adding/dropping/modifying columns, enabling you to iterate on your analytics models dynamically as your data evolves.
+
+### 4. Advanced Query Capabilities for Event Logging and Timeseries
+
+Handle time-windowed queries, aggregations, and filtering elegantly. ClickHouse’s native features, combined with GORM's expressive interface, let you build precise analytics reports, user behavior tracking, or system monitoring tools with minimal overhead.
+
+---
+
+## Real-World Use Cases
+
+Explore practical scenarios where GORM ClickHouse becomes indispensable:
+
+### Analytics & Business Intelligence
+
+Aggregate and analyze sales, user engagement, or operational metrics across vast datasets. For example:
+
+```go
+var results []DailyUserCount
+DB.Model(&UserEvent{}).
+  Select("toDate(event_time) as date, count(*) as user_count").
+  Group("date").
+  Scan(&results)
+```
+
+This enables generation of daily active user reports with minimal effort.
+
+### Event Logging and Monitoring
+
+Store high-frequency log entries and perform real-time queries across different dimensions:
+
+- Filter error logs by timestamp or severity
+- Aggregate logs per server or application
+
+Example:
+
+```go
+var errorLogs []LogEntry
+DB.Where("level = ? AND timestamp > ?", "ERROR", startTime).
+   Find(&errorLogs)
+```
+
+### Timeseries Data Processing
+
+Track metrics like CPU, memory, and custom business KPIs over time with precision timestamps:
+
+- Use date-time precision support for accurate timeseries points
+- Efficiently query rolling averages or peaks
+
+### Before and After: The GORM ClickHouse Advantage
+
+| Without GORM ClickHouse | With GORM ClickHouse |
+|------------------|------------------|
+| Manually write complex, vendor-specific SQL | Write idiomatic Go code with less SQL overhead |
+| Manage connections and migrations separately | One tool covers migrations, queries, and schema management |
+| Limited native tooling for ClickHouse | Full integration aligned to Go developer workflows |
+
+---
+
+## Unlocking Faster Development: How to Get Started
+
+Here’s a quick preview of what working with GORM ClickHouse looks like in practice:
+
+```go
+package main
+
+import (
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+type Event struct {
+  ID        uint64
+  Timestamp Time
+  Type      string
+  Payload   string
+}
+
+func main() {
+  dsn := "clickhouse://gorm:gorm@localhost:9942/gorm"
+  db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+  if err != nil {
+    panic(err)
+  }
+
+  // Auto migrate your schema
+  db.AutoMigrate(&Event{})
+
+  // Insert data
+  db.Create(&Event{Timestamp: time.Now(), Type: "click", Payload: "button1"})
+
+  // Query data
+  var events []Event
+  db.Where("type = ?", "click").Find(&events)
+}
+```
+
+This simple example illustrates how you can rapidly iterate on your data model, ingest data, and perform queries without diving into complicated SQL or connection management.
+
+---
+
+## Best Practices & Tips for Success
+
+- **Batch Inserts:** Group multiple records per insert for optimal performance.
+- **Use Appropriate Data Types:** Utilize ClickHouse’s native types such as `DateTime64` for precision.
+- **Leverage Migration Tools:** Always run migrations in a controlled environment to avoid schema drift.
+- **Testing Queries:** Use GORM’s debugging modes to verify generated SQL matches your expectations.
+
+---
+
+## Troubleshooting Common Pitfalls
+
+- **Connection Issues:** Verify your ClickHouse server is accessible and credentials are correct; check ports `9942` or defaults.
+- **Schema Conflicts:** When migrations fail, confirm your model struct tags align with ClickHouse’s supported data types.
+- **Query Performance:** Use query profiling and optimize indexes; GORM supports ClickHouse-specific index creation to help.
+
+---
+
+## Summary
+
+GORM ClickHouse is the ideal solution for Go developers requiring a seamless, productive, and high-performance gateway to ClickHouse’s analytical power. Whether developing analytics dashboards, ingesting event logs, or managing timeseries metrics, GORM ClickHouse enables rapid iteration, robust tooling, and reliable production workflows.
+
+---
+
+For detailed setup instructions, advanced configuration, and integration patterns, refer to the rest of this documentation set including:
+
+- [What is GORM ClickHouse?](/overview/introduction-and-value/what-is-gorm-clickhouse)
+- [Target Audience](/overview/introduction-and-value/target-audience)
+- [System Architecture](/overview/architecture-and-concepts/system-architecture)
+- [Running Migrations](/guides/getting-started/running-migrations)
+
+Take advantage of GORM ClickHouse to accelerate your analytics projects today.
