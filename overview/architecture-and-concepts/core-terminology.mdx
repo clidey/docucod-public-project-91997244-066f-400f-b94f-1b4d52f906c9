@@ -1,0 +1,180 @@
+---
+title: "Core Concepts & Terminology"
+description: "Introduce essential terms—such as DSN, Auto Migrate, Table Options, Cluster, Granularity, Compression—and explain their roles in effective configuration and operation with the driver. Clarify the relationships between GORM, ClickHouse, and the Go driver interface."
+---
+
+# Core Concepts & Terminology
+
+Understanding the foundational terms and concepts used in the GORM ClickHouse driver is essential for effective configuration, smooth operation, and optimal integration of your Go applications with ClickHouse. This section introduces key terminology such as DSN, Auto Migrate, Table Options, Cluster, Granularity, Compression, and clarifies the relationship between GORM, ClickHouse, and the underlying Go driver.
+
+---
+
+## Data Source Name (DSN)
+
+The DSN is a standardized string used to define how your application connects to the ClickHouse database via the GORM ClickHouse driver. It encapsulates the connection details including username, password, host(s), port, database name, and optional parameters that alter connection behavior.
+
+**Example DSN:**
+```go
+dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+```
+
+**Key Points:**
+- Allows specifying multiple hosts to enable failover and load balancing.
+- Supports tuning parameters like dial timeout and read timeout.
+- Integral for initializing database connections that GORM uses.
+
+---
+
+## Auto Migrate
+
+Auto Migrate is a powerful feature that automatically synchronizes your Go structs to the ClickHouse database schema. It creates or modifies tables, adds columns, and manages indexes based on your model definitions, freeing you from manually writing database schema changes.
+
+**User Intent:**
+- Quickly evolve your database schema alongside your application code.
+- Ensure your database structure matches your Go models without manual intervention.
+
+**Example Usage:**
+```go
+db.AutoMigrate(&User{})
+```
+
+Best Practice:
+- Use Auto Migrate in development or controlled environments.
+- Review generated migrations carefully before using in production.
+
+---
+
+## Table Options
+
+Table Options let you customize the physical storage and engine behavior of tables in ClickHouse when creating or migrating them via GORM. These options impact performance, replication, and partitioning.
+
+**Common Table Options:**
+- `ENGINE=MergeTree()` – defines the table engine.
+- `ORDER BY tuple()` – specifies sorting keys for MergeTree-based engines.
+- Distributed engine configurations.
+
+**Applying Table Options:**
+```go
+db.Set("gorm:table_options", "ENGINE=Distributed(cluster, default, hits)").AutoMigrate(&User{})
+```
+
+**Why Important:**
+- Fine-tune how data is stored and accessed.
+- Essential for distributed setups and cluster-aware deployments.
+
+---
+
+## Cluster
+
+A Cluster in ClickHouse represents a group of servers that work together to store, replicate, and query data. Clusters enable data distribution and fault tolerance.
+
+**In the context of GORM ClickHouse driver:**
+- You can specify cluster-related options when defining tables via migration options.
+- It controls where and how tables are physically created across multiple nodes.
+
+**Example:**
+```go
+db.Set("gorm:table_cluster_options", "on cluster default").AutoMigrate(&User{})
+```
+
+**Benefit:**
+- Ensures consistent schema across all cluster nodes.
+- Leverages ClickHouse’s distributed querying capabilities seamlessly.
+
+---
+
+## Granularity
+
+Granularity determines the size of index granules in the ClickHouse MergeTree engine. A granule controls how much data is indexed together, affecting query speed and index size.
+
+**Details:**
+- Represented as the number of rows per index granule.
+- Default setting is 8192 rows per granule (granularity = 3, since 2^13 = 8192).
+
+**Configured via:**
+- Driver default `DefaultGranularity` (default is 3).
+- Index-specific granularity via struct tags if needed.
+
+**Impact:**
+- Smaller granules improve query accuracy at cost of index size.
+- Larger granules reduce index size but may slow down filtering.
+
+---
+
+## Compression
+
+Compression in ClickHouse reduces the storage size of data and potentially speeds up I/O by encoding data efficiently.
+
+**Default Algorithm:**
+- LZ4 (Lossless and fast compression algorithm) is the default.
+
+**Configuration:**
+- Set globally via `DefaultCompression` in driver configuration.
+- Optionally, individual columns can specify compression codecs via struct tags.
+
+**Example:**
+```go
+// In driver config
+defaultCompression := "LZ4"
+```
+
+**Why Compression Matters:**
+- Reduces storage costs.
+- Can improve query throughput by reducing disk reads.
+
+---
+
+## Relationship Between GORM, ClickHouse, and Go Driver
+
+- **GORM** is the Go ORM library providing an expressive API for interacting with databases.
+- **ClickHouse** is the high-performance columnar analytical database.
+- **GORM ClickHouse Driver** connects GORM with ClickHouse, translating GORM operations into ClickHouse-compatible queries.
+- **Underlying Go Driver (`clickhouse-go/v2`)** manages low-level communication, connection pooling, and ClickHouse protocol compliance.
+
+This layering allows you to write idiomatic Go code using GORM while leveraging ClickHouse’s full capabilities transparently.
+
+---
+
+## Summary of Core Concepts
+
+| Term                | Role / Description                                                |
+|---------------------|-----------------------------------------------------------------| 
+| DSN                 | Connects Go app to ClickHouse with connection parameters        |
+| Auto Migrate        | Syncs Go structs to ClickHouse schema automatically              |
+| Table Options       | Customizes table storage engines and behaviors                  |
+| Cluster             | Defines server group for distributed data and queries           |
+| Granularity        | Controls index size vs performance tradeoff                     |
+| Compression         | Reduces data size for efficient storage and querying            |
+
+---
+
+## Practical Tips
+
+- Use DSN parameters to fine-tune connection behaviors based on your network and workload needs.
+- Leverage Auto Migrate for fast schema iteration but validate migrations carefully for production.
+- Customize Table Options and Cluster settings to optimize distributed deployments.
+- Adjust Granularity and Compression settings for your data patterns to balance query speed and resource usage.
+- Understand the relationship between GORM and the native Go driver to troubleshoot and extend functionality when needed.
+
+---
+
+## Illustrative Diagram: Core Relationships
+
+```mermaid
+flowchart TD
+    GORM["GORM (Go ORM)"] -->|Uses| ClickHouseDriver["GORM ClickHouse Driver"]
+    ClickHouseDriver -->|Uses| GoClickHouseDriver["github.com/ClickHouse/clickhouse-go/v2"]
+    GoClickHouseDriver -->|Connects to| ClickHouseDB[("ClickHouse Database")]
+```
+
+This flow shows how your Go application leveraging GORM interacts with ClickHouse via layered drivers, ensuring seamless integration with ClickHouse’s analytical power.
+
+---
+
+Explore related documentation pages for setup, advanced configuration, and migration workflows to build a complete understanding:
+
+- [What is GORM ClickHouse?](../../overview/introduction-and-value/what-is-gorm-clickhouse)
+- [Database Migrations and Table Options](../../guides/getting-started/running-migrations)
+- [Advanced Configuration & Customizing Connections](../../guides/advanced-usage/advanced-configuration-options)
+
+By mastering these concepts, you set a solid foundation for leveraging the GORM ClickHouse driver with confidence, unlocking high-performance analytics driven directly from your Go applications.
