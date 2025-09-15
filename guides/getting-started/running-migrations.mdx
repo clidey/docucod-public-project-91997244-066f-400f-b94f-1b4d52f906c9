@@ -1,0 +1,335 @@
+---
+title: "Database Migrations and Table Options"
+description: "Step-by-step guide on running migrations, setting table engines, and configuring cluster/table options using GORM with ClickHouse. Focuses on schema creation and evolving your database."
+---
+
+# Database Migrations and Table Options
+
+Harness the power of GORM's integration with ClickHouse through an intuitive migration experience that enables you to create, evolve, and configure your database schema seamlessly. This guide will walk you through running migrations, setting table engines, and customizing cluster and table options, empowering you to manage schema changes confidently and effectively.
+
+---
+
+## 1. Migration Workflow Overview
+
+### What This Guide Helps You Accomplish
+This guide provides a clear, step-by-step process for running database migrations using the GORM ClickHouse driver. You'll learn how to:
+- Create tables based on Go structs
+- Modify existing schemas for evolving data structures
+- Customize ClickHouse table engines and clusters
+- Manage indexes and column attributes effectively
+
+### Prerequisites
+- You have a working Go project with GORM and the ClickHouse driver installed
+- Your GORM connection to ClickHouse is established and verified
+- Basic understanding of GORM models and Go structs
+
+### Expected Outcome
+By following this guide, you will be able to automate your ClickHouse schema management, performing migrations that reflect changes in your Go models, including table options and cluster configurations tailored to ClickHouse's analytic strengths.
+
+### Time Estimate
+15-30 minutes to confidently set up and run migrations with custom table configurations.
+
+### Difficulty Level
+Intermediate (familiarity with GORM and ClickHouse concepts is helpful)
+
+---
+
+## 2. Running Migrations with GORM ClickHouse
+
+### AutoMigrate for Table Creation and Updates
+The core of schema changes in GORM is the `AutoMigrate` method, which automatically creates or updates tables to match your Go model definitions.
+
+```go
+// Define your model struct
+type User struct {
+    ID   uint64 `gorm:"primaryKey"`
+    Name string
+    Age  int
+}
+
+// Run migration to create or update the table
+err := db.AutoMigrate(&User{})
+if err != nil {
+    panic("Migration failed: " + err.Error())
+}
+```
+
+This command:
+- Creates the table if it does not exist
+- Adds new columns if they are missing
+- Updates column types where safe
+
+> **Note:** `AutoMigrate` does not drop unused columns automatically to avoid data loss.
+
+---
+
+### 2.1 Setting Table Engines and Cluster Options
+
+ClickHouse supports various table engines optimized for analytics workloads. You can specify the engine and cluster options during migration using GORM's session `Set` method with special keys.
+
+```go
+// Use your preferred table engine, e.g., Distributed engine for clusters
+db.Set("gorm:table_options", "ENGINE=Distributed(cluster, default, hits)").AutoMigrate(&User{})
+
+// Add cluster-level options such as replication
+db.Set("gorm:table_cluster_options", "on cluster default").AutoMigrate(&User{})
+```
+
+- `gorm:table_options` lets you specify the `ENGINE` clause and other table-specific options.
+- `gorm:table_cluster_options` lets you specify cluster execution options such as `on cluster <cluster_name>`.
+
+This flexibility allows you to leverage ClickHouse's distributed architecture directly via migrations.
+
+---
+
+### 2.2 Working with Indexes
+
+GORM ClickHouse supports creating indexes during migration that conform with ClickHouse capabilities (e.g., `minmax`). You can define indexes via model tags:
+
+```go
+// Example model with index on Name
+type UserWithIndex struct {
+    ID   uint64 `gorm:"primaryKey"`
+    Name string `gorm:"index:type:minmax"`
+}
+
+// AutoMigrate will create the index
+db.AutoMigrate(&UserWithIndex{})
+```
+
+To check for an existing index:
+
+```go
+hasIndex := db.Migrator().HasIndex(&UserWithIndex{}, "name")
+```
+
+And to create or drop indexes manually:
+
+```go
+// Create index
+err := db.Migrator().CreateIndex(&UserWithIndex{}, "name")
+
+// Drop index
+err = db.Migrator().DropIndex(&UserWithIndex{}, "name")
+```
+
+> **Tip:** ClickHouse does not support unique indexes through this driver; indexes primarily help query performance.
+
+---
+
+### 2.3 Adding, Dropping, and Modifying Columns
+
+Migrations often require changing table columns. GORM ClickHouse supports the following operations:
+
+- **Add Column:**
+
+```go
+err := db.Migrator().AddColumn(&User{}, "Age")
+```
+
+- **Drop Column:**
+
+```go
+err := db.Migrator().DropColumn(&User{}, "Age")
+```
+
+- **Modify Column:** Changing the data type or attributes
+
+```go
+err := db.Migrator().AlterColumn(&User{}, "Age")
+```
+
+- **Rename Column:** Supported only on ClickHouse 20.4+ (check version compatibility)
+
+```go
+err := db.Migrator().RenameColumn(&User{}, "old_name", "new_name")
+```
+
+Be aware that `RenameColumn` will return an error if your ClickHouse version does not support it.
+
+---
+
+### 2.4 Checking Existence of Tables, Columns, and Indexes
+
+Before executing migrations or changes, it's often useful to verify schema state:
+
+```go
+// Check if the table exists
+exists := db.Migrator().HasTable(&User{})
+
+// Check if the column exists
+existsColumn := db.Migrator().HasColumn(&User{}, "Age")
+
+// Check if index exists
+existsIndex := db.Migrator().HasIndex(&User{}, "name")
+```
+
+These methods help build migration scripts with conditional logic.
+
+---
+
+## 3. Hands-On Example: Evolving Your User Table
+
+<Steps>
+<Step title="Define Initial Model and Run First Migration">
+
+```go
+type User struct {
+    ID   uint64 `gorm:"primaryKey"`
+    Name string
+    Age  int
+}
+
+err := db.AutoMigrate(&User{})
+if err != nil {
+    panic(err)
+}
+```
+This creates the `users` table with the three columns.
+
+</Step>
+
+<Step title="Add a Commented Column with Default and Compression">
+
+```go
+type User struct {
+    ID           uint64 `gorm:"primaryKey"`
+    Name         string
+    Age          int
+    Note         string `gorm:"size:100;comment:User note;default:'none';codec:ZSTD"`
+}
+err = db.AutoMigrate(&User{})
+if err != nil {
+    panic(err)
+}
+```
+This migration adds the `Note` column with size, comment, default value, and codec options.
+
+</Step>
+
+<Step title="Create Table with Distributed Engine on a Cluster">
+
+```go
+db.Set("gorm:table_options", "ENGINE=Distributed(cluster, default, users)") 
+  .Set("gorm:table_cluster_options", "ON CLUSTER cluster")
+  .AutoMigrate(&User{})
+```
+
+This configures your table to use the Distributed engine on the specified ClickHouse cluster.
+
+</Step>
+
+</Steps>
+
+---
+
+## 4. Best Practices and Tips
+
+- Always **backup your data** before running destructive migrations like dropping columns.
+- Use `HasColumn` and `HasIndex` to conditionally run schema changes, ensuring idempotency.
+- Specify `gorm:table_options` to leverage ClickHouse engines that match your analytic workload pattern.
+- For large clusters, include `gorm:table_cluster_options` to propagate migrations cluster-wide.
+- Customize index granularity through model tags if your query patterns demand precision.
+- Avoid relying on unsupported features like renaming indexes or unique indexes, which ClickHouse does not fully support.
+- Remember ClickHouse does not support standard relational constraints (e.g., foreign keys, unique constraints).
+
+---
+
+## 5. Troubleshooting Common Issues
+
+### Migration Fails Due to Unsupported Rename
+If you receive an error when renaming columns, verify your ClickHouse version supports column renaming (20.4+).
+
+### Migrations Not Reflecting Changes
+- Ensure your model struct has changed (new fields, tags)
+- Confirm `AutoMigrate` is called with the model type, not an instance
+- Check for driver or GORM errors by enabling logging with `db.Debug()`
+
+### Table Engine Syntax Errors
+- Check your engine options syntax exactly matches ClickHouse requirements
+- Use `gorm:table_options` with complete and valid ENGINE options
+
+### Cluster Options Not Applied
+- Confirm your cluster name is correctly specified
+- Use uppercase keywords like `ON CLUSTER` in options
+- Confirm cluster configuration on your ClickHouse servers
+
+---
+
+## 6. Next Steps and Related Documentation
+
+- **Connecting to ClickHouse**: Start with establishing connections before migrating.
+- **Basic CRUD Operations**: Use migrated schemas for building data operations.
+- **Advanced Configuration Options**: Customize driver behavior and connection settings.
+- **Batch Inserts and Performance**: Optimize data input after schema setup.
+- **System Architecture & Concepts**: Understand internal functions for advanced troubleshooting.
+
+
+---
+
+## Appendix: Quick Reference Code Samples
+
+<CodeGroup>
+```go
+// Basic AutoMigrate with Table Engine
+err := db.Set("gorm:table_options", "ENGINE=MergeTree() ORDER BY (id)").AutoMigrate(&User{})
+```
+```go
+// Add New Column
+err := db.Migrator().AddColumn(&User{}, "Email")
+```
+```go
+// Rename Column (Requires ClickHouse 20.4+)
+err := db.Migrator().RenameColumn(&User{}, "OldName", "NewName")
+```
+```go
+// Check If Index Exists
+exists := db.Migrator().HasIndex(&User{}, "name")
+```
+</CodeGroup>
+
+---
+
+## Diagram: Migration Process Flow
+
+```mermaid
+flowchart TD
+    Start[Start Migration]
+    VerifyConn[Verify DB Connection]
+    DefineModel[Define/Update Go Model Struct]
+    RunAutoMigrate[Run db.AutoMigrate()]
+    CreateOrUpdateTables{Are Tables Created or Updated?}
+    AddOrDropCols[Add/Drop/Modify Columns]
+    SetTableOptions[Set Table & Cluster Options]
+    CreateIndexes[Create Indexes]
+    VerifySchema[Verify Schema Exists]
+    MigrationSuccess[Migration Successful]
+    MigrationFail[Migration Failed]
+
+    Start --> VerifyConn
+    VerifyConn --> DefineModel
+    DefineModel --> RunAutoMigrate
+    RunAutoMigrate --> CreateOrUpdateTables
+    CreateOrUpdateTables -->|No| MigrationFail
+    CreateOrUpdateTables -->|Yes| AddOrDropCols
+    AddOrDropCols --> SetTableOptions
+    SetTableOptions --> CreateIndexes
+    CreateIndexes --> VerifySchema
+    VerifySchema --> MigrationSuccess
+    MigrationFail --> End[End]
+    MigrationSuccess --> End
+```
+
+---
+
+<Tip>
+Run migrations inside your development and testing environments first. Automate your migration scripts for consistency and repeatability.
+</Tip>
+
+<Warning>
+Avoid using unsupported features such as foreign keys or renaming indexes; these operations are not supported by ClickHouse.
+</Warning>
+
+<Note>
+Use `db.Set("gorm:table_options", "...")` before calling `AutoMigrate` for engine and cluster customizations.
+</Note>
