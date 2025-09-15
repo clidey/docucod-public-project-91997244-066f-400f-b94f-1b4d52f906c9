@@ -1,0 +1,301 @@
+---
+title: "Quickstart: Your First Query"
+description: "A minimal step-by-step walkthrough that takes users from a fresh setup to successfully inserting and querying data using GORM and ClickHouse. Includes sample code, table creation, basic CRUD, and links to further reading for deep dives."
+---
+
+# Quickstart: Your First Query
+
+Welcome to the GORM ClickHouse Quickstart guide! Here, you will take a fresh GORM ClickHouse setup through the essential steps of table creation, inserting data, and retrieving results. This minimal, practical walkthrough will have you running your first queries in no time.
+
+---
+
+## 1. Prepare Your Environment
+
+Before starting, ensure you have a running ClickHouse server and a Go environment ready.
+
+- **ClickHouse Server**: Accessible on `localhost:9942` (default port for native client).
+- **Go Development Environment**: Go 1.18+ recommended with module support.
+- **GORM ClickHouse Driver Installed**: Add it to your project with:
+
+```shell
+go get -u gorm.io/driver/clickhouse
+```
+
+If you want to run ClickHouse via Docker for a quick test:
+
+```yaml
+version: "3"
+services:
+  clickhouse-server:
+    image: yandex/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=gorm
+      - CLICKHOUSE_USER=gorm
+      - CLICKHOUSE_PASSWORD=gorm
+    ports:
+      - 9941:8123
+      - 9942:9000
+
+```
+
+<Tip>
+Adjust the DSN connection string below as needed to match your credentials and ClickHouse endpoint.
+</Tip>
+
+---
+
+## 2. Define Your Data Model
+
+Start by defining a Go struct that matches the data you want to store in ClickHouse. This struct will map to a ClickHouse table.
+
+```go
+package main
+
+import (
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+	"log"
+)
+
+type User struct {
+	ID        uint64 `gorm:"primaryKey"`
+	Name      string
+	FirstName string
+	LastName  string
+	Age       int64
+	Active    bool
+	Salary    float32
+}
+
+```
+
+This example includes typical fields you might store, such as user identification, age, salary, and active status.
+
+---
+
+## 3. Connect to ClickHouse
+
+Use the DSN (Data Source Name) format to connect your application to ClickHouse via GORM.
+
+```go
+func main() {
+	dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+
+	db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect database: %v", err)
+	}
+
+	// continue with migration and data operations
+}
+```
+
+> Replace username, password, host, port, and database name if different from defaults.
+
+---
+
+## 4. Create the Table with Auto Migration
+
+GORM ClickHouse supports `AutoMigrate` to create tables automatically based on your struct.
+
+```go
+// Inside main(), after connection:
+if err := db.AutoMigrate(&User{}); err != nil {
+	log.Fatalf("failed to migrate schema: %v", err)
+}
+```
+
+This creates the `users` table with fields matching your `User` struct.
+
+<Tip>
+AutoMigrate is safe to run multiple times; it updates the schema as needed.
+</Tip>
+
+---
+
+## 5. Insert Data: Your First Record
+
+Add a new user record to the database using GORM’s `Create` method.
+
+```go
+newUser := User{
+	ID:        1,
+	Name:      "johndoe",
+	FirstName: "John",
+	LastName:  "Doe",
+	Age:       28,
+	Active:    true,
+	Salary:    55000.50,
+}
+
+if err := db.Create(&newUser).Error; err != nil {
+	log.Fatalf("failed to insert record: %v", err)
+}
+```
+
+> The primary key `ID` is explicitly set here to match ClickHouse requirements.
+
+---
+
+## 6. Query Data: Retrieve and Verify
+
+Fetch the inserted record to confirm the operation succeeded.
+
+```go
+var user User
+if err := db.First(&user, "id = ?", 1).Error; err != nil {
+	log.Fatalf("failed to query record: %v", err)
+}
+
+log.Printf("User found: %+v\n", user)
+```
+
+If this runs without error and outputs the user details, you have successfully executed your first query.
+
+---
+
+## 7. Perform Batch Insertion
+
+To efficiently insert multiple records at once, use batch create:
+
+```go
+users := []User{
+	{ID: 2, Name: "alice", FirstName: "Alice", LastName: "Smith", Age: 30, Active: true, Salary: 60000},
+	{ID: 3, Name: "bob", FirstName: "Bob", LastName: "Brown", Age: 35, Active: false, Salary: 48000},
+}
+
+if err := db.Create(&users).Error; err != nil {
+	log.Fatalf("failed batch insert: %v", err)
+}
+```
+
+This reduces communication overhead to ClickHouse and speeds up the write process.
+
+---
+
+## 8. Update and Delete Operations (Optional Next Steps)
+
+Once comfortable with querying and insertion, expand to updating and deleting records:
+
+```go
+// Update user name
+if err := db.Model(&User{}).Where("id = ?", 1).Update("name", "john_updated").Error; err != nil {
+	log.Fatalf("failed to update user: %v", err)
+}
+
+// Delete user
+if err := db.Delete(&User{}, 1).Error; err != nil {
+	log.Fatalf("failed to delete user: %v", err)
+}
+```
+
+These basic CRUD operations form the foundation of your ClickHouse data management pipeline.
+
+---
+
+## 9. Troubleshooting Common Issues
+
+<AccordionGroup title="Quick Troubleshooting Tips">
+<Accordion title="Connection errors">
+- Verify ClickHouse is running and accessible on the configured host and port.
+- Confirm credentials and permissions are correct.
+- Check for firewall or network issues blocking the connection.
+</Accordion>
+<Accordion title="Table migration failures">
+- Ensure your Go struct fields are compatible with ClickHouse types.
+- Confirm AutoMigrate has the necessary permissions to create tables.
+</Accordion>
+<Accordion title="Query returns empty results">
+- Make sure data was inserted successfully.
+- Verify query conditions correctly match stored data.
+- Use `db.Debug()` during development to log generated SQL.
+</Accordion>
+</AccordionGroup>
+
+<Tip>
+Enable debug mode in GORM by adding `db = db.Debug()` after connection to see full SQL logs.
+</Tip>
+
+---
+
+## 10. Confirming Success
+
+You are successful when:
+
+- Your table is created in ClickHouse matching your Go struct.
+- Inserting data returns no errors.
+- Querying the database returns inserted data accurately.
+
+These steps validate your basic ClickHouse and GORM integration.
+
+---
+
+## 11. Where to Go Next?
+
+- [Running Migrations and Table Options](../guides/getting-started/running-migrations) — Learn to manage schema changes and advanced table settings.
+- [Performing Basic CRUD Operations](../guides/getting-started/basic-crud) — Deep dive into create, read, update, delete using GORM with ClickHouse.
+- [Advanced Configuration & Customizing Connections](../guides/advanced-usage/advanced-configuration-options) — Tweak connection, compression, and cluster setups.
+
+Explore these guides to unlock full power from your ClickHouse analytical engine with GORM.
+
+---
+
+## Complete Example: Putting It All Together
+
+```go
+package main
+
+import (
+	"log"
+	"gorm.io/driver/clickhouse"
+	"gorm.io/gorm"
+)
+
+type User struct {
+	ID        uint64 `gorm:"primaryKey"`
+	Name      string
+	FirstName string
+	LastName  string
+	Age       int64
+	Active    bool
+	Salary    float32
+}
+
+func main() {
+	dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+	db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect database: %v", err)
+	}
+
+	if err := db.AutoMigrate(&User{}); err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+
+	user := User{ID: 1, Name: "johndoe", FirstName: "John", LastName: "Doe", Age: 28, Active: true, Salary: 55000.50}
+	if err := db.Create(&user).Error; err != nil {
+		log.Fatalf("failed to insert user: %v", err)
+	}
+
+	var result User
+	if err := db.First(&result, "id = ?", 1).Error; err != nil {
+		log.Fatalf("failed to query user: %v", err)
+	}
+
+	log.Printf("Queried user: %+v", result)
+}
+```
+
+Run this program, and with a running ClickHouse server, it will complete your first data operation.
+
+---
+
+## References
+
+- [Installation Guide](../setup-and-installation/installation)
+- [Configuration & Connection Setup](../setup-and-installation/configuration-connection-setup)
+- [Running Migrations Guide](../../guides/getting-started/running-migrations)
+- [Performing Basic CRUD Guide](../../guides/getting-started/basic-crud)
+- [GORM Official Documentation](https://gorm.io)
+
+---
