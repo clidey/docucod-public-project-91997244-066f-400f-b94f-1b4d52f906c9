@@ -1,0 +1,89 @@
+---
+title: "Target Audience"
+description: "Define the ideal users of this driver: Go developers, data engineers, and teams leveraging GORM with ClickHouse. Clarify prerequisites, knowledge expectations, and project contexts that align with adopting the driver."
+---
+
+# Target Audience
+
+## Who Should Use GORM ClickHouse?
+
+GORM ClickHouse is meticulously crafted for Go developers, data engineers, and teams who need a powerful yet elegant solution to work seamlessly with ClickHouse through the GORM ecosystem. If your projects involve analytical workloads, event logging, or timeseries data and you're leveraging GORM as your ORM of choice, this driver fits naturally into your development workflow.
+
+### Ideal Users
+
+- **Go Developers Building Data-Intensive Apps:** If you write Go applications that require efficient, streamlined interactions with ClickHouse, GORM ClickHouse presents a native, idiomatic interface to manage database schemas and perform CRUD operations.
+
+- **Data Engineers Managing Analytics Workflows:** Teams focused on processing large datasets or time-series data will benefit from the driver’s optimized integration, allowing easy migration, indexing, and query execution within the Go environment.
+
+- **Development Teams Using GORM:** When your project is already embedded in the GORM ecosystem, this driver extends your tooling to include ClickHouse without disrupting your existing codebase.
+
+## Knowledge & Prerequisites
+
+To get the most value from this driver, users should have:
+
+- **Basic to Intermediate Go Proficiency:** Familiarity with Go programming language and GORM ORM concepts.
+
+- **Understanding of ClickHouse:** Basic knowledge of ClickHouse's architecture, types, and typical use cases, especially around analytical datasets.
+
+- **Experience With Database Migrations & ORM Patterns:** Since this driver supports migrations, schema management, and data operations tailored to ClickHouse, knowing how migrations and schema definitions work in GORM is essential.
+
+## Project Contexts for Adoption
+
+The driver aligns well with projects that:
+
+- **Require High-Performance Analytical Queries:** Usage scenarios involving real-time event analytics, metrics aggregation, or large-scale data warehousing.
+
+- **Leverage Go for Backend Services:** Backend services or microservices written in Go that need direct, efficient ClickHouse integration.
+
+- **Adopt GORM As Their ORM Layer:** Projects standardized on GORM benefit from this driver to unify database operations without maintaining separate ClickHouse-specific code.
+
+- **Need Schema Migration and Indexing Support:** Applications needing programmatic migration support and advanced indexing options through GORM interfaces.
+
+## Why This Matters
+
+Identifying the right users ensures you can:
+
+- Quickly onboard by aligning expectations and prerequisites.
+- Optimize your development workflow using idiomatic Go and GORM practices.
+- Avoid mismatch where raw SQL or non-GORM approaches might cause friction.
+
+## Practical Tips for Getting Started
+
+1. **Ensure Go and GORM Proficiency:** Familiarize yourself with GORM’s basic usage and model-driven migrations.
+2. **Set Up ClickHouse Environment:** Use provided docker-compose setups or native installations for your development environment.
+3. **Review Sample Models and Tests:** Explore example entity definitions and associated tests to understand integration patterns.
+4. **Understand GORM-specific Features Supported:** Know which ClickHouse-specific features (like indexes or data types) are supported by the driver.
+5. **Prepare for Analytical Workloads:** Tailor your schema and queries considering ClickHouse’s strengths around large-scale aggregations and analytics.
+
+For detailed installation and configuration, see the [Getting Started documentation](/getting-started/setup-and-installation/installation).
+
+---
+
+## Example: Developer Profile
+
+Meet Alex, a backend developer responsible for building a real-time analytics service in Go. Alex uses GORM extensively to interact with SQL databases and now needs to integrate ClickHouse. With GORM ClickHouse, Alex can reuse familiar GORM patterns and structures, speed up development, and focus on delivering business value rather than battling raw SQL intricacies or inconsistent driver behavior.
+
+## Summary
+
+- **Target Audiences:** Go developers, data engineers, GORM users
+- **Prerequisites:** Go and GORM knowledge, understanding of ClickHouse concepts
+- **Suitable Projects:** Analytics workloads, Go-based services, teams adopting GORM ORM layer
+- **Key Benefits:** Seamless GORM integration, migration support, idiomatic Go experience
+
+---
+
+## Related Documentation
+
+- [What is GORM ClickHouse?](/overview/introduction-and-value/what-is-gorm-clickhouse): Understand the overall purpose and value
+- [Key Value & Use Cases](/overview/introduction-and-value/value-use-cases): Explore scenarios where the driver excels
+- [Installation & Configuration](/getting-started/setup-and-installation/installation): Prepare your environment
+- [Running Migrations](/guides/getting-started/running-migrations): Manage your database schema
+
+
+<Tip>
+Start by ensuring your team is proficient with Go and GORM ORM basics; this driver is designed to enhance, not complicate, your existing Go data workflows.
+</Tip>
+
+<Note>
+This driver assumes a working knowledge of ClickHouse and focuses on providing a Go native ORM experience without exposing you to low-level protocol details.
+</Note>
