@@ -1,0 +1,204 @@
+---
+title: "Troubleshooting & Validation"
+description: "A focused guide helping users to diagnose and resolve common setup problems, such as connection errors, driver loading issues, or misconfigured environment variables. Also includes simple tests and validation steps to verify that the integration works as expected."
+---
+
+# Troubleshooting & Validation
+
+This guide helps you quickly identify and resolve common issues encountered during setup and initial use of the GORM ClickHouse driver. It also provides practical validation steps to confirm that your integration is working as expected, empowering you to move confidently beyond your first run.
+
+---
+
+## 1. Common Setup Problems and Solutions
+
+### Connection Errors
+Connection issues are the most frequent problem during initial setup. Here’s how to diagnose and fix them:
+
+1. **Verify ClickHouse Server Accessibility**
+   - Ensure that your ClickHouse server is running and listening on the expected port (default is `9000`).
+   - If using Docker, check ports mapping and container status.
+
+2. **Check DSN Syntax and Credentials**
+   - Confirm the DSN format matches:
+
+   ```go
+   dsn := "clickhouse://username:password@host:port/database?dial_timeout=10s&read_timeout=20s"
+   ```
+   - Use correct username, password, and host addresses.
+
+3. **Firewall and Network Settings**
+   - Ensure no firewall or network rules block the Go application from reaching the ClickHouse server.
+
+4. **Debugging Connection**
+   - Enable debug logs in GORM config:
+
+   ```go
+   db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Info)})
+   ```
+
+   - Review logs for detailed connection error messages.
+
+
+### Driver Loading Failures
+If you receive errors related to driver loading:
+
+- Confirm that you have imported the GORM ClickHouse driver correctly in your Go module:
+
+```go
+import (
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+```
+
+- Check that the driver package is included in your `go.mod` dependencies.
+
+
+### Environment Variable Misconfiguration
+When using environment variables for configuration:
+
+- Double-check variable names and values.
+- Make sure they are loaded in the application's environment context before startup.
+- Avoid common typos or missing variables such as DSN or database credentials.
+
+
+## 2. Validating Your Setup
+
+Follow these straightforward tests to ensure your GORM ClickHouse driver installation and setup are correct:
+
+### Test Connectivity
+Run this simple Go snippet to verify connection and authentication:
+
+```go
+package main
+
+import (
+  "fmt"
+  "gorm.io/driver/clickhouse"
+  "gorm.io/gorm"
+)
+
+func main() {
+  dsn := "clickhouse://gorm:gorm@localhost:9942/gorm?dial_timeout=10s&read_timeout=20s"
+  db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+  if err != nil {
+    panic(fmt.Sprintf("Failed to connect: %v", err))
+  }
+  fmt.Println("Connection successful")
+}
+```
+
+Expected outcome: prints "Connection successful" without panic.
+
+
+### Verify Table Creation
+Test that you can create a table with AutoMigrate:
+
+```go
+type User struct {
+  Name string
+  Age  int
+}
+
+err = db.AutoMigrate(&User{})
+if err != nil {
+  panic(fmt.Sprintf("AutoMigrate error: %v", err))
+}
+fmt.Println("Table created successfully")
+```
+
+Success means that the table schema is successfully created in ClickHouse.
+
+
+### Insert and Query Data
+Perform basic insert and query to confirm operational workflows:
+
+```go
+db.Create(&User{Name: "Test User", Age: 30})
+
+var user User
+err = db.First(&user, "name = ?", "Test User").Error
+if err != nil {
+  panic(fmt.Sprintf("Query failed: %v", err))
+}
+fmt.Printf("User retrieved: %+v\n", user)
+```
+
+Expected: The user record is inserted and retrieved without error.
+
+
+## 3. Practical Troubleshooting Tips
+
+<Tip>
+Always test connectivity with a minimal standalone Go program before integrating into complex apps.
+</Tip>
+
+<Tip>
+Enable GORM's detailed logging to see the actual SQL generated, which helps identify malformed queries or schema mismatches.
+</Tip>
+
+<Warning>
+Remember that some features like renaming columns or indexes are unsupported on older ClickHouse versions (pre-20.4). Check your server version if migration errors arise.
+</Warning>
+
+<Note>
+When using clustered tables or distributed engines, verify that you set `gorm:table_options` and `gorm:table_cluster_options` correctly during migration.
+</Note>
+
+<Tip>
+Check ClickHouse server logs for errors if queries time out or fail silently.
+</Tip>
+
+
+## 4. Common Issues and How to Fix Them
+
+<AccordionGroup title="Common Troubleshooting Scenarios">
+<Accordion title="Connection Timeout or Refused">
+- Confirm server is running and port is correct.
+- Check firewall and network connectivity.
+- Increase `dial_timeout` and `read_timeout` in DSN to accommodate slower connections.
+</Accordion>
+<Accordion title="Authentication Failures">
+- Verify username and password in the DSN.
+- Check ClickHouse server user privileges.
+- Test connection using ClickHouse client CLI with same credentials.
+</Accordion>
+<Accordion title="AutoMigrate Fails with Unsupported SQL">
+- Ensure ClickHouse server version is &gt;= 20.4 for certain schema operations.
+- Disable unsupported features in config, e.g., `DontSupportRenameColumn`.
+- Inspect generated SQL via GORM logs.
+</Accordion>
+<Accordion title="Empty Default Value Not Applied">
+- Set `DontSupportEmptyDefaultValue` flag appropriately when initializing Dialector if encountering issues with empty string defaults.
+</Accordion>
+<Accordion title="Slow Queries or Inserts">
+- Use batch inserts where possible.
+- Review indexes and compression configuration.
+- Consult performance guides in advanced documentation.
+</Accordion>
+</AccordionGroup>
+
+
+## 5. Verification Checklist
+
+Before proceeding beyond initial setup, ensure:
+
+- [x] Able to connect to ClickHouse without errors.
+- [x] Successfully created tables using AutoMigrate.
+- [x] Inserted records into the database.
+- [x] Queried records return correct results.
+- [x] Logs indicate no silent errors during DB operations.
+
+
+## 6. Getting Help
+
+- Review the [Installation Guide](/getting-started/setup-and-installation/installation) for environment and dependency setup.
+- Consult [Configuration & Connection Setup](/getting-started/setup-and-installation/configuration-connection-setup) for DSN and authentication troubleshooting.
+- Use the [Quickstart Basic Usage](/getting-started/your-first-run/quickstart-basic-usage) guide for runnable examples.
+- Explore [Migrator & Schema Management](guides/getting-started/running-migrations) for solving schema change issues.
+- Visit the GORM official forum and GitHub issues at [https://github.com/go-gorm/clickhouse](https://github.com/go-gorm/clickhouse) for community support.
+
+
+---
+
+With this troubleshooting and validation workflow, you can quickly identify root causes of common pitfalls and confirm that your GORM ClickHouse integration is functioning perfectly, paving the way for seamless scaling and advanced use cases.
