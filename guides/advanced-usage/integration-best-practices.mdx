@@ -1,0 +1,326 @@
+---
+title: "Integration Patterns and Best Practices"
+description: "Recommended patterns for integrating ClickHouse with GORM reliably in real-world applications, including error handling, version compatibility, and sustainable practices for evolving schemas."
+---
+
+# Integration Patterns and Best Practices
+
+Explore recommended integration patterns for connecting ClickHouse with GORM that ensure robustness, version compatibility, and maintainability in real-world Go applications. This guide focuses on practical approaches for error handling, schema migrations, and sustainable evolution strategies while leveraging GORM’s capabilities with ClickHouse.
+
+---
+
+## 1. Workflow Overview
+
+### Purpose
+Provide reliable integration patterns and best practices for developers to successfully use the GORM ClickHouse driver in production-grade applications, addressing common pitfalls, compatibility considerations, and long-term schema evolution.
+
+### Prerequisites
+- A functional ClickHouse instance accessible to your Go application.
+- GORM ClickHouse driver installed and configured with connection established ([Configuration & Connection Setup Guide](/getting-started/setup-and-installation/configuration-connection-setup)).
+- Basic familiarity with Go and GORM ORM patterns.
+- Understanding of your ClickHouse server version and its feature set.
+
+### Intended Outcome
+You will gain:
+- Clear practices for schema migrations, error handling, and version awareness.
+- Knowledge of how to handle ClickHouse limitations (like column renaming support).
+- Insights into sustainable schema evolution with minimal downtime.
+
+### Estimated Time
+15-30 minutes
+
+### Difficulty Level
+Intermediate
+
+---
+
+## 2. Key Integration Patterns
+
+### 2.1 Proactive Version Compatibility Checks
+
+ClickHouse versions differ in the features they support. To align GORM's behavior correctly:
+
+- Use the driver’s built-in version detection (automatically done during initialization) to check your server’s ClickHouse version.
+- This influences support for advanced migration features like renaming columns or setting column precision.
+
+**Practical Tip:**
+- When initializing the driver, avoid disabling `SkipInitializeWithVersion` unless you have a strong reason; it ensures you automatically adapt to version differences.
+
+
+### 2.2 Schema Migrations with Caution
+
+ClickHouse does not support certain schema operations traditionally available in relational databases. Integrate migrations thoughtfully:
+
+- **Column Rename:** Supported only in ClickHouse versions >= 20.4. Before that, renaming columns is unsupported and should be avoided.
+- **Empty Default Values:** Set `DontSupportEmptyDefaultValue` flag wisely based on your schema needs to prevent issues with empty strings as defaults.
+- **Indexes:** ClickHouse supports indexes differently; use your GORM migration calls to add/drop indexes but remember no unique/fulltext indexes.
+- **Migration Idempotency:** Use AutoMigrate carefully, and verify if schema changes are necessary before applying migrations to avoid redundant operations.
+
+**Implementation Example:**
+
+```go
+// AutoMigrate with version awareness and table options
+if err := db.Set("gorm:table_options", "ENGINE=MergeTree() ORDER BY tuple()")
+               .AutoMigrate(&User{}); err != nil {
+    log.Fatalf("Failed auto migrate: %v", err)
+}
+```
+
+### 2.3 Managing Table Options
+
+- Use Go's context or GORM session variables to apply specific engine or cluster options during migrations.
+- Parameters like `gorm:table_options` and `gorm:table_cluster_options` let you specify Distributed engines or clusters for advanced setups.
+
+**Example:**
+
+```go
+// Set distributed engine options for cluster
+db.Set("gorm:table_cluster_options", "ON CLUSTER my_cluster").AutoMigrate(&User{})
+```
+
+### 2.4 Handling Batch Inserts and Performance Optimization
+
+- Use batch inserts via `db.Create([]User{...})` to reduce network roundtrips and improve injection speed.
+- For large datasets, tune batch sizes and monitor ClickHouse server settings.
+
+**Reference:** See the [Batch Inserts and Performance Patterns Guide](/guides/advanced-usage/batch-inserts-performance) for optimization strategies.
+
+### 2.5 Robust Error Handling
+
+- On connection failures or migration errors, log and handle errors gracefully to ensure application resilience.
+- During migrations, confirm table existence and index creations stepwise.
+
+**Example snippet from migration validation:**
+
+```go
+if err := db.Migrator().DropTable(&User{}); err != nil {
+    log.Fatalf("Drop table failed: %v", err)
+}
+
+if err := db.AutoMigrate(&User{}); err != nil {
+    log.Fatalf("Auto migrate failed: %v", err)
+}
+
+if !db.Migrator().HasTable(&User{}) {
+    log.Fatalf("User table not found after migration")
+}
+```
+
+---
+
+## 3. Practical Step-by-Step Migration Strategy
+
+<Steps>
+<Step title="Step 1: Verify ClickHouse Version Compatibility">
+Check your ClickHouse server version to determine feature support for operations like rename column or datetime precision.
+
+You can retrieve the version via:
+
+```go
+var version string
+if err := db.Raw("SELECT version()").Scan(&version).Error; err != nil {
+    log.Fatalf("Failed to get ClickHouse version: %v", err)
+}
+fmt.Println("ClickHouse version:", version)
+```
+
+Use this info to configure migration flags accordingly.
+</Step>
+<Step title="Step 2: Define Your Data Models Clearly">
+Structure your Go structs representing database tables with appropriate GORM tags to control data types, defaults, and indexes.
+
+Example:
+
+```go
+type User struct {
+    ID        uint64 `gorm:"primaryKey"`
+    Name      string
+    Age       int64  `gorm:"type:Nullable(Int64)"`
+    CreatedAt time.Time
+}
+```
+</Step>
+<Step title="Step 3: Configure Table and Cluster Options">
+Use GORM's `Set` method on DB to specify table engines or distributed cluster options during migration.
+
+```go
+db.Set("gorm:table_options", "ENGINE=MergeTree() ORDER BY tuple()")
+  .Set("gorm:table_cluster_options", "ON CLUSTER my_cluster")
+  .AutoMigrate(&User{})
+```
+</Step>
+<Step title="Step 4: Run AutoMigrate and Validate">
+Run `AutoMigrate` to create or update schemas.
+
+Programmatically verify the table and expected columns/indexes:
+
+```go
+if !db.Migrator().HasTable(&User{}) {
+    log.Fatalf("Table users not found")
+}
+if !db.Migrator().HasColumn("users", "name") {
+    log.Fatalf("Column name missing in users")
+}
+```
+</Step>
+<Step title="Step 5: Handle Schema Changes Carefully">
+When altering columns, adding, or dropping, use the Migrator methods:
+
+```go
+// Add a new column
+if err := db.Migrator().AddColumn(&User{}, "IsAdmin"); err != nil {
+    log.Fatalf("Failed to add column: %v", err)
+}
+
+// Rename column if your version supports it
+if err := db.Migrator().RenameColumn(&User{}, "Age", "UserAge"); err != nil {
+    log.Printf("Rename column unsupported: %v", err)
+}
+```
+
+Avoid unsupported operations on older ClickHouse versions.
+</Step>
+<Step title="Step 6: Use Transactional Practices Mindfully">
+ClickHouse doesn’t fully support savepoints or rollback to savepoints, so avoid using `SavePoint` or similar transactional patterns in GORM which rely on those features.
+</Step>
+</Steps>
+
+---
+
+## 4. Common Pitfalls and Troubleshooting
+
+### 4.1 Migration Errors Related to Unsupported Features
+- **Symptom:** Errors when renaming columns or when default values fail.
+- **Cause:** Using features not supported in your ClickHouse version.
+- **Solution:** Check the driver flags like `DontSupportRenameColumn` and `DontSupportEmptyDefaultValue`. Upgrade ClickHouse server if feasible.
+
+### 4.2 AutoMigrate Not Triggering on Schema Changes
+- **Symptom:** Running `AutoMigrate` again does not apply schema changes.
+- **Cause:** The driver performs a schema diff; if no changes are detected, migration is skipped.
+- **Solution:** Confirm your model changes are correctly reflected in Go structs and tags. Check that hooks/callbacks are not interfering.
+
+### 4.3 Connection and Timeout Issues
+- **Symptom:** Application hangs or fails connecting to ClickHouse.
+- **Cause:** Misconfigured DSN timeouts or network issues.
+- **Solution:** Tune DSN parameters such as `dial_timeout`, `read_timeout`, verify network access, and validate credentials.
+
+### 4.4 Index Unavailability or Creation Failures
+- **Symptom:** Indexes are missing after migration or manual attempts to create them fail.
+- **Cause:** ClickHouse does not support unique/fulltext indexes; index renaming is unsupported.
+- **Solution:** Use GORM index creation with supported index types only. For renaming, drop and recreate indexes.
+
+---
+
+## 5. Best Practices Summary
+
+- **Align migrations with ClickHouse version capabilities.** Always verify version before running migration scripts.
+- **Use GORM’s migration interface for schema changes** but expect some limitations due to ClickHouse’s analytical design.
+- **Batch your inserts when working with large datasets** to leverage ClickHouse’s fast import capabilities.
+- **Define and use table engine and cluster options explicitly in migrations** for distributed setups.
+- **Monitor and log migration and query errors clearly** to diagnose connectivity or schema issues early.
+- **Reuse connection pools and customize connection options for production** under the Advanced Configuration guide.
+
+---
+
+## 6. Additional Resources
+
+- [GORM ClickHouse Driver Configuration & Connection Setup](/getting-started/setup-and-installation/configuration-connection-setup)
+- [Database Migrations and Table Options Guide](/guides/getting-started/running-migrations)
+- [Batch Inserts and Performance Patterns](/guides/advanced-usage/batch-inserts-performance)
+- [Advanced Configuration Options](/guides/advanced-usage/advanced-configuration-options)
+
+---
+
+## 7. Reference Example: Migration with Version Detection
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "gorm.io/driver/clickhouse"
+    "gorm.io/gorm"
+)
+
+type User struct {
+    ID        uint64 `gorm:"primaryKey"`
+    Name      string
+    IsAdmin   bool
+    Birthday  time.Time `gorm:"precision:4"`
+    Note      string    `gorm:"size:10;comment:my note"`
+    CreatedAt time.Time
+}
+
+func main() {
+    dsn := "clickhouse://gorm:gorm@127.0.0.1:9942/gorm?dial_timeout=10s&read_timeout=20s"
+
+    db, err := gorm.Open(clickhouse.Open(dsn), &gorm.Config{})
+    if err != nil {
+        log.Fatalf("failed to connect database: %v", err)
+    }
+
+    // AutoMigrate example with version awareness
+    if err := db.AutoMigrate(&User{}); err != nil {
+        log.Fatalf("auto migrate failed: %v", err)
+    }
+
+    // Add column example
+    if err := db.Migrator().AddColumn(&User{}, "IsAdmin"); err != nil {
+        log.Printf("AddColumn error: %v", err)
+    }
+
+    // Rename column only if supported
+    err = db.Migrator().RenameColumn(&User{}, "Note", "UserNote")
+    if err != nil {
+        log.Printf("RenameColumn error (likely unsupported): %v", err)
+    }
+}
+```
+
+---
+
+## 8. Diagram: GORM ClickHouse Migration Workflow
+
+```mermaid
+flowchart TD
+    Start([Start Integration]) --> InitDB["Initialize DB connection with GORM ClickHouse"]
+    InitDB --> CheckVersion["Check ClickHouse Version"]
+    CheckVersion -->|< 20.4| DisableRename["Disable RenameColumn feature"]
+    CheckVersion -->|>= 20.4| EnableRename["Enable RenameColumn feature"]
+
+    DisableRename & EnableRename --> DefineSchema["Define Go Structs with GORM tags"]
+    DefineSchema --> ConfigureTable["Set Table and Cluster Options"]
+    ConfigureTable --> RunMigration["Run AutoMigrate & Verify Schema"]
+    RunMigration --> CheckChanges["Check for Schema Changes"]
+
+    CheckChanges -->|Changes Detected| ApplyMigrations["Apply Add/Drop/Alter Column and Indexes"]
+    CheckChanges -->|No Changes| SkipMigration["Skip Migration"]
+
+    ApplyMigrations --> VerifySuccess["Confirm Migration Success"]
+    VerifySuccess --> End([Integration Ready])
+
+    SkipMigration --> End
+
+    classDef task fill:#cfe2f3,stroke:#2a69ac,stroke-width:2px;
+    class InitDB,CheckVersion,DisableRename,EnableRename,DefineSchema,ConfigureTable,RunMigration,CheckChanges,ApplyMigrations,VerifySuccess,SkipMigration task;
+```
+
+---
+
+<Tip>
+Always ensure your GORM model definitions are up-to-date and reflect the desired ClickHouse schema accurately before applying migrations. Use version-aware migration practices to avoid errors caused by unsupported features in your ClickHouse deployment.
+</Tip>
+
+<Warning>
+ClickHouse's architecture and capabilities differ from typical OLTP databases. Avoid assumptions about transactional behaviors and schema change capabilities when integrating with GORM.
+</Warning>
+
+
+---
+
+For detailed migration examples and test cases, consult the source code files: `migrator.go`, `migrator_test.go`, and `tests_test.go` in the official repository.
+
+
+---
